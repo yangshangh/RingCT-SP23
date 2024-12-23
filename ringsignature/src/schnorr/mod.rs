@@ -1,4 +1,4 @@
 mod pedersen;
-mod constraint;
+mod transcript;
 pub mod prover;
 pub mod verifier;

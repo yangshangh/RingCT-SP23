@@ -1,10 +1,9 @@
-use ark_std::rand::Rng;
-use ark_ec::CurveGroup;
-use transcript::IOPTranscript;
-
+use ark_ff::PrimeField;
+use ark_serialize::CanonicalSerialize;
+use merlin::Transcript;
 use std::marker::PhantomData;
 
-use super::pedersen::{Params, Commitment, Pedersen};
+use crate::errors::{TranscriptError};
 
 #[derive(Clone, Debug)]
 pub struct Proof<C: CurveGroup> {
@@ -21,19 +20,19 @@ pub struct Schnorr<C: CurveGroup> {
 
 impl<C: CurveGroup> Schnorr<C> {
     pub fn new_params<R: Rng>(
-        rng: &mut R, 
+        rng: &mut R,
         max: usize
     ) -> Params<C> {
         Pedersen::new_params(rng, max)
     }
 
     pub fn prove(
-        params: &Params<C>, 
+        params: &Params<C>,
         transcript: &mut IOPTranscript<C::ScalarField>,
         m: &Vec<C::ScalarField>,
         r: &C::ScalarField,
     ) -> Proof<C> {
-        // z = m*r + u 
+        // z = m*r + u
         let cm = Pedersen::commit(params, m, r);
         let u = transcript.get_and_append_challenge_vectors(b"u", m.len()).unwrap();
         let ru = transcript.get_and_append_challenge(b"ru").unwrap();
@@ -77,7 +76,7 @@ impl<C: CurveGroup> Schnorr<C> {
 mod tests {
     use super::*;
     use ark_std::UniformRand;
-    use ark_secp256k1::{Fr, Projective}; 
+    use ark_secp256k1::{Fr, Projective};
 
     #[test]
     fn test_schnorr() {
