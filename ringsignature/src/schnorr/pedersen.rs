@@ -1,20 +1,14 @@
 use ark_ec::CurveGroup;
 use ark_std::{rand::Rng, UniformRand};
 use std::{marker::PhantomData};
+use crate::PedersenErrors;
 
 #[derive(Clone, Debug)]
-pub struct Params<C: CurveGroup> {
+pub struct PedersenParams<C: CurveGroup> {
     pub h: C,
-    pub generators: Vec<C::Affine>, // we're using the `GAffine` type here for more efficient MSM.
+    // the `GAffine` type is used here for more efficient MSM.
+    pub generators: Vec<C::Affine>,
 }
-
-pub struct Proof<C: CurveGroup> {
-    pub message: Vec<C::ScalarField>,
-    pub random: C::ScalarField,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Commitment<C: CurveGroup>(pub C);
 
 #[derive(Clone, Debug)]
 pub struct Pedersen<C: CurveGroup> {
@@ -22,54 +16,53 @@ pub struct Pedersen<C: CurveGroup> {
 }
 
 impl<C: CurveGroup> Pedersen<C> {
-    pub fn new_params<R: Rng>(
+    pub fn setup<R: Rng>(
         rng: &mut R, 
         max: usize
-    ) -> Params<C> {
+    ) -> Result<PedersenParams<C>, PedersenErrors> {
         let h_scalar = C::ScalarField::rand(rng);
         let g: C = C::generator();
-        let generators = vec![C::Affine::rand(rng); max]; 
+        let generators = vec![C::Affine::rand(rng); max];
 
-        Params { 
+        Ok(PedersenParams {
             h: g.mul(h_scalar), 
             generators 
-        }
+        })
     }
 
     pub fn commit(
-        params: &Params<C>,
+        params: &PedersenParams<C>,
         m: &[C::ScalarField],
         r: &C::ScalarField,
-    ) -> Commitment<C> {
+    ) -> Result<C, PedersenErrors> {
         if m.len() != params.generators.len() {
             panic!("Invalid message length");
         }
         let msm = C::msm(&params.generators, m).unwrap();
 
         let cm = params.h.mul(r) + msm;
-        Commitment(cm)
+        Ok(cm)
     }
 
     pub fn open(
-        params: &Params<C>,
-        cm: &Commitment<C>,
+        params: &PedersenParams<C>,
+        cm: &C,
         m: &Vec<C::ScalarField>,
         r: &C::ScalarField,
-    ) -> Proof<C> {
-        Proof {
-            message: m.clone(),
-            random: r.clone(),
-        }
+    ) -> Result<(&Vec<C::ScalarField>, C::ScalarField), PedersenErrors> {
+        todo!();
+        Ok((m, r))
     }
 
     pub fn verify(
-        params: &Params<C>,
-        cm: &Commitment<C>,
-        proof: &Proof<C>,
-    ) -> bool {
-        let msm = C::msm(&params.generators, &proof.message).unwrap();
-        let cm_prime = params.h.mul(&proof.random) + msm;
-        cm_prime == cm.0
+        params: &PedersenParams<C>,
+        cm: &C,
+        m: &Vec<C::ScalarField>,
+        r: &C::ScalarField,
+    ) -> Result<bool, PedersenErrors> {
+        let msm = C::msm(&params.generators, &m).unwrap();
+        let cm_prime = params.h.mul(&r) + msm;
+        Ok(cm_prime == cm)
     }
 }
 
@@ -84,7 +77,7 @@ mod tests {
     fn test_pedersen() {
         let mut rng = ark_std::test_rng();
         let max = 1;
-        let params = Pedersen::<Projective>::new_params(&mut rng, max);
+        let params = Pedersen::<Projective>::setup(&mut rng, max);
         
         let m = vec![Fr::from(1)];
         let r = Fr::rand(&mut rng);
@@ -100,7 +93,7 @@ mod tests {
     fn bench_group(b: &mut Bencher) {
         let mut rng = ark_std::test_rng();
         let max = 4096;
-        let params = Pedersen::<G1Projective>::new_params(&mut rng, max);
+        let params = Pedersen::<G1Projective>::setup(&mut rng, max);
         
         let m: Vec<G1Fr> = vec![G1Fr::rand(&mut rng); max];
         let r = G1Fr::rand(&mut rng);
