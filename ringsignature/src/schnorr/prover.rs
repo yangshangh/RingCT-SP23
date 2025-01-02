@@ -3,11 +3,10 @@ use ark_serialize::CanonicalSerialize;
 use ark_ec::CurveGroup;
 use ark_std::{rand::Rng, UniformRand, end_timer, log2, start_timer, One, Zero};
 use std::marker::PhantomData;
-
+use crate::commitment::pedersen::PedersenCommitment;
 use crate::schnorr::transcript::ProofTranscript;
 use crate::errors::{SchnorrErrors};
-use crate::schnorr::pedersen::{Pedersen, Params};
-
+use crate::commitment::structs::{PedersenParams, PedersenOpening};
 // #[derive(Clone, Debug)]
 // pub struct Proof<C: CurveGroup> {
 //     cm: Commitment<C>,
@@ -35,12 +34,12 @@ pub struct SchnorrParams<C: CurveGroup> {
     pub num_witness: usize,
     // the number of public inputs (commitments)
     pub num_pub_inputs: usize,
-    // the generators for pedersen commitments
-    pub generators: Params<C>,
+    // the generators for commitment commitments
+    pub public_parameters: PedersenParams<C>,
 }
 /// Implement Schnorr signature by:
 /// write the protocol step by step
-/// calling the pedersen to generate elements
+/// calling the commitment to generate elements
 /// calling transcript for appending message and generate challenge
 impl<C: CurveGroup> Schnorr<C> {
     /// Setup algorithm for Schnorr Signature
@@ -52,14 +51,15 @@ impl<C: CurveGroup> Schnorr<C> {
     ///
     pub fn setup<R: Rng>(
         rng: &mut R,
-        max: usize
-    ) -> Result<Params<C>, SchnorrErrors> {
-        Ok(Pedersen::new_params(rng, max))
+        supported_size: usize
+    ) -> Result<SchnorrParams<C>, SchnorrErrors> {
+        let
+        Ok(PedersenCommitment::setup(rng, supported_size))
     }
 
     /// Prover algorithm for Schnorr Signature
     /// Inputs:
-    /// - params: pedersen commitment parameter
+    /// - params: commitment commitment parameter
     /// - pub_inputs: the commitment vector for witness
     /// - witness: the witness vector
     pub fn prove(

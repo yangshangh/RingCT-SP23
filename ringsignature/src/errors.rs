@@ -19,7 +19,8 @@ impl From<SerializationError> for TranscriptError {
     }
 }
 
-pub enum PedersenErrors {
+#[derive(Display, Debug)]
+pub enum CommitmentErrors {
     /// Invalid Prover: {0}
     InvalidProver(String),
     /// Invalid Verifier: {0}
@@ -32,12 +33,13 @@ pub enum PedersenErrors {
     SerializationError(SerializationError),
 }
 
-impl From<SerializationError> for PedersenErrors {
+impl From<SerializationError> for CommitmentErrors {
     fn from(e: SerializationError) -> Self {
         Self::SerializationError(e)
     }
 }
 
+#[derive(Display, Debug)]
 pub enum SchnorrErrors {
     /// Invalid Prover: {0}
     InvalidProver(String),
@@ -50,7 +52,7 @@ pub enum SchnorrErrors {
     /// Transcript error {0}
     TranscriptError(TranscriptError),
     /// Pedersen error {0}
-    PedersenErrors(PedersenErrors),
+    CommitmentErrors(CommitmentErrors),
     /// An error during (de)serialization: {0}
     SerializationError(SerializationError),
 }
@@ -61,9 +63,9 @@ impl From<TranscriptError> for SchnorrErrors {
     }
 }
 
-impl From<PedersenErrors> for SchnorrErrors {
-    fn from(e: PedersenErrors) -> Self {
-        Self::PedersenErrors(e)
+impl From<CommitmentErrors> for SchnorrErrors {
+    fn from(e: CommitmentErrors) -> Self {
+        Self::CommitmentErrors(e)
     }
 }
 
