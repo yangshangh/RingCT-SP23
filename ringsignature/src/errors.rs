@@ -40,7 +40,7 @@ impl From<SerializationError> for CommitmentErrors {
 }
 
 #[derive(Display, Debug)]
-pub enum SchnorrErrors {
+pub enum SigmaErrors {
     /// Invalid Prover: {0}
     InvalidProver(String),
     /// Invalid Verifier: {0}
@@ -57,19 +57,19 @@ pub enum SchnorrErrors {
     SerializationError(SerializationError),
 }
 
-impl From<TranscriptError> for SchnorrErrors {
+impl From<TranscriptError> for SigmaErrors {
     fn from(e: TranscriptError) -> Self {
         Self::TranscriptError(e)
     }
 }
 
-impl From<CommitmentErrors> for SchnorrErrors {
+impl From<CommitmentErrors> for SigmaErrors {
     fn from(e: CommitmentErrors) -> Self {
         Self::CommitmentErrors(e)
     }
 }
 
-impl From<SerializationError> for SchnorrErrors {
+impl From<SerializationError> for SigmaErrors {
     fn from(e: SerializationError) -> Self {
         Self::SerializationError(e)
     }

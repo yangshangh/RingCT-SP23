@@ -75,7 +75,7 @@ impl<F: PrimeField> ProofTranscript<F> {
 
     // Generate the challenge from the current transcript and append it to the transcript
     // The output field element is statistical uniform as long as the field has a size less than 2^384.
-    pub fn get_and_append_challenge(&mut self, label: &'static [u8]) -> Result<(),TranscriptError>{
+    pub fn get_and_append_challenge(&mut self, label: &'static [u8]) -> Result<F,TranscriptError>{
         // we need to reject when transcript is empty
         if self.is_empty {
             return Err(TranscriptError::InvalidTranscript(

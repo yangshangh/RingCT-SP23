@@ -3,11 +3,12 @@ pub mod pedersen;
 use ark_std::rand::Rng;
 use ark_ec::CurveGroup;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use std::{borrow::Borrow, fmt::Debug};
+use std::fmt::Debug;
 use crate::errors::CommitmentErrors;
 
 /// This trait defines APIs for (vector) commitment schemes with hiding property.
-pub trait Commitment<C:CurveGroup> {
+pub trait CommitmentScheme<C:CurveGroup>:
+{
     /// public parameters
     type PublicParams: Clone + Debug;
     /// message
@@ -30,7 +31,7 @@ pub trait Commitment<C:CurveGroup> {
     /// - message
     /// - random
     fn commit(
-        params: impl Borrow<Self::PublicParams>,
+        params: &Self::PublicParams,
         m: &Self::Message,
         r: &Self::Random,
     ) -> Result<Self::Commitment, CommitmentErrors>;
@@ -45,7 +46,7 @@ pub trait Commitment<C:CurveGroup> {
     /// Verify algorithm checks the validity of the opening
     /// outputs either 1 (pass) or 0 (fail)
     fn verify(
-        params: impl Borrow<Self::PublicParams>,
+        params: &Self::PublicParams,
         cm: &Self::Commitment,
         open: &Self::Opening,
     ) -> Result<bool, CommitmentErrors>;

@@ -1,20 +1,18 @@
 use ark_ec::CurveGroup;
-use ark_std::{rand::Rng, UniformRand, marker::PhantomData};
-use derivative::Derivative;
+use ark_std::{rand::Rng, UniformRand, marker::PhantomData, end_timer, start_timer};
+
+use std::fmt::Debug;
+
 use crate::CommitmentErrors;
-use crate::commitment::{Commitment, structs::{PedersenParams, PedersenOpening}};
+use crate::commitment::{CommitmentScheme, structs::{PedersenParams, PedersenOpening}};
 
 // Pedersen (Vector) Commitment
-#[derive(Derivative)]
-#[derivative(
-    Clone(bound = ""),
-    Debug(bound = ""),
-)]
-pub struct PedersenCommitment<C: CurveGroup> {
+#[derive(Clone, Debug)]
+pub struct PedersenCommitmentScheme<C: CurveGroup> {
     phantom: PhantomData<C>,
 }
 
-impl<C: CurveGroup> Commitment<C> for PedersenCommitment<C> {
+impl<C: CurveGroup> CommitmentScheme<C> for PedersenCommitmentScheme<C> {
     // Parameters
     type PublicParams = PedersenParams<C>;
     // witnesses including message vector and random
@@ -51,13 +49,16 @@ impl<C: CurveGroup> Commitment<C> for PedersenCommitment<C> {
         params: &Self::PublicParams,
         m: &Self::Message,
         r: &Self::Random,
-    ) -> Result<C, CommitmentErrors> {
+    ) -> Result<Self::Commitment, CommitmentErrors> {
+        let start = start_timer!(|| "generating pedersen commitment...");
+        let params = params;
         if m.len() != params.vec_g.len() {
             return Err(CommitmentErrors::InvalidParameters("message length should equal to the generator length".to_string()));
         }
         let msm = C::msm(&params.vec_g, m).unwrap();
 
         let cm = params.h.mul(r) + msm;
+        end_timer!(start);
         Ok(cm)
     }
 
@@ -68,10 +69,11 @@ impl<C: CurveGroup> Commitment<C> for PedersenCommitment<C> {
         m: &Self::Message,
         r: &Self::Random,
     ) -> Result<Self::Opening, CommitmentErrors> {
-        Ok((Self::Opening{
-            m,
-            r
-        }))
+        // TODO: maybe we can convert m, r in Vec<usize> to Vec<F> here?
+        Ok(Self::Opening{
+            message: m.clone(),
+            random: r.clone(),
+        })
     }
 
     /// Verify algorithm takes inputs as
@@ -85,9 +87,12 @@ impl<C: CurveGroup> Commitment<C> for PedersenCommitment<C> {
         cm: &Self::Commitment,
         open: &Self::Opening,
     ) -> Result<bool, CommitmentErrors> {
+        let start = start_timer!(|| "checking pedersen commitment...");
+        let params = params;
         let msm = C::msm(&params.vec_g, &open.message).unwrap();
         let cm_prime = params.h.mul(&open.random) + msm;
-        Ok(cm_prime == cm)
+        end_timer!(start);
+        Ok(&cm_prime == cm)
     }
 }
 
@@ -97,32 +102,33 @@ mod tests {
     use test::Bencher;
     use ark_secp256k1::{Fr, Projective};
     use ark_bls12_381::{Fr as G1Fr, G1Projective};
+    use crate::utils::vec::convert;
 
     #[test]
     fn test_pedersen() {
         let mut rng = ark_std::test_rng();
-        let supported_size = 1;
-        let params = PedersenCommitment::<Projective>::setup(&mut rng, supported_size).unwrap();
-        
-        let m = vec![Fr::from(1)];
+        let supported_size = 10;
+        let params = PedersenCommitmentScheme::<Projective>::setup(&mut rng, supported_size).unwrap();
+        let m:[u64; 10] = [0,1,2,3,4,5,6,7,8,9];
+        let field_m:Vec<Fr> = convert(&m);
         let r = Fr::rand(&mut rng);
 
-        let cm = PedersenCommitment::<Projective>::commit(&params, &m, &r).unwrap();
+        let cm = PedersenCommitmentScheme::<Projective>::commit(&params, &field_m, &r).unwrap();
         
-        let opening = PedersenCommitment::<Projective>::open(&m, &r).unwrap();
+        let opening = PedersenCommitmentScheme::<Projective>::open(&field_m, &r).unwrap();
 
-        assert_eq!(PedersenCommitment::<Projective>::verify(&params, &cm, &opening).unwrap(), true);
+        assert_eq!(PedersenCommitmentScheme::<Projective>::verify(&params, &cm, &opening).unwrap(), true);
     }
 
     #[bench]
     fn bench_group(b: &mut Bencher) {
         let mut rng = ark_std::test_rng();
         let supported_size = 4096;
-        let params = PedersenCommitment::<G1Projective>::setup(&mut rng, supported_size).unwrap();
+        let params = PedersenCommitmentScheme::<G1Projective>::setup(&mut rng, supported_size).unwrap();
         
         let m: Vec<G1Fr> = vec![G1Fr::rand(&mut rng); supported_size];
         let r = G1Fr::rand(&mut rng);
 
-        b.iter(|| PedersenCommitment::<G1Projective>::commit(&params, &m, &r));
+        b.iter(|| PedersenCommitmentScheme::<G1Projective>::commit(&params, &m, &r));
     }
  }

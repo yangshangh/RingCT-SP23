@@ -1,4 +1,2 @@
-mod transcript;
-pub mod prover;
-pub mod verifier;
-mod structs;
+pub mod protocol;
+pub(crate) mod structs;
