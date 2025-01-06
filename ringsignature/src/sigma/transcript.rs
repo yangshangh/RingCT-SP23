@@ -3,7 +3,7 @@ use ark_serialize::CanonicalSerialize;
 use merlin::Transcript;
 use std::marker::PhantomData;
 
-use crate::errors::{TranscriptError};
+use crate::errors::TranscriptError;
 
 /// Takes as input a struct, and converts them to a series of bytes. All traits that implement `CanonicalSerialize`
 /// can be automatically converted to bytes in this manner.
@@ -75,7 +75,7 @@ impl<F: PrimeField> ProofTranscript<F> {
 
     // Generate the challenge from the current transcript and append it to the transcript
     // The output field element is statistical uniform as long as the field has a size less than 2^384.
-    pub fn get_and_append_challenge(&mut self, label: &'static [u8]) -> Result<F,TranscriptError>{
+    pub fn get_and_append_challenge(&mut self, label: &'static [u8]) -> Result<F, TranscriptError> {
         // we need to reject when transcript is empty
         if self.is_empty {
             return Err(TranscriptError::InvalidTranscript(
@@ -88,7 +88,7 @@ impl<F: PrimeField> ProofTranscript<F> {
         self.transcript.challenge_bytes(label, &mut buf);
         let challenge = F::from_le_bytes_mod_order(&buf);
         self.append_serializable_element(label, &challenge)?; // why not use append_field_element?
-        // self.append_field_element(label, &challenge);
+                                                              // self.append_field_element(label, &challenge);
         Ok(challenge)
     }
 

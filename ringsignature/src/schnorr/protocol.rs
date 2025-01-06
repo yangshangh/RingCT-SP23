@@ -1,11 +1,12 @@
-use std::fmt::Debug;
 use ark_ec::CurveGroup;
-use ark_std::{rand::Rng, UniformRand, end_timer, start_timer};
-use std::marker::PhantomData;
+use ark_std::{end_timer, rand::Rng, start_timer, UniformRand};
+use sha256::digest;
+use std::{fmt::Debug, io::Write, marker::PhantomData};
+
 use crate::commitment::CommitmentScheme;
-use crate::sigma::{SigmaProtocol, transcript::ProofTranscript};
-use crate::errors::{SigmaErrors};
+use crate::errors::SigmaErrors;
 use crate::schnorr::structs::{SchnorrParams, SchnorrProof};
+use crate::sigma::{transcript::ProofTranscript, SigmaProtocol};
 
 // todo: turn it into a signature scheme
 
@@ -26,11 +27,8 @@ where
 impl<C, COM> SigmaProtocol<C, COM> for SchnorrProtocol<C, COM>
 where
     C: CurveGroup,
-    COM: CommitmentScheme<C,
-    Message = Vec<C::ScalarField>,
-    Random = C::ScalarField,
-    Commitment = C,
-    >,
+    COM:
+        CommitmentScheme<C, Message = Vec<C::ScalarField>, Random = C::ScalarField, Commitment = C>,
 {
     /// public parameters
     type PublicParams = SchnorrParams<C, COM>;
@@ -40,6 +38,7 @@ where
     type Challenge = Vec<C::ScalarField>;
     /// proof
     type Proof = SchnorrProof<C, COM>;
+
     /// Setup algorithm with
     /// Inputs:
     /// - rng: RngCore palys a role as the random tape
@@ -50,13 +49,15 @@ where
     fn setup<R: Rng>(
         rng: &mut R,
         witness: &Self::Witness,
-        supported_size: usize
-    ) -> Result<Self::PublicParams, SigmaErrors>{
+        msg: &String,
+        supported_size: usize,
+    ) -> Result<Self::PublicParams, SigmaErrors> {
         let commitment_params = COM::setup(rng, supported_size)?;
         let schnorr_params = SchnorrParams {
             num_witness: witness.len(),
             num_pub_inputs: 1,
             public_parameters: commitment_params,
+            message: msg.clone(),
         };
         Ok(schnorr_params)
     }
@@ -86,40 +87,57 @@ where
         let com_mask = COM::commit(&params.public_parameters, &masking, &r_mask)?;
         transcript.append_serializable_element(b"masking commitment", &com_mask)?;
 
+        // append the message digest to the transcript
+        let h = digest(&params.message);
+        let mut h_msg: &mut [u8] = &mut [0; 32];
+        h_msg.write(h.as_bytes()).unwrap();
+        transcript.append_message(b"message digest", &h_msg)?;
+
         // generate the challenge c
         let c = transcript.get_and_append_challenge(b"challenge")?;
 
         // compute opening vector
-        let z:Vec<C::ScalarField> = witness.iter().zip(masking.iter()).map(|(wi, mi)| c * wi + mi).collect();
+        let z: Vec<C::ScalarField> = witness
+            .iter()
+            .zip(masking.iter())
+            .map(|(wi, mi)| c * wi + mi)
+            .collect();
         let z_r = c * r_wit + r_mask;
         let mut open = z.clone();
         open.push(z_r);
 
         // proving ends
         end_timer!(start);
+
         Ok(SchnorrProof {
             commitments: vec![com_wit, com_mask],
             opening: open,
             challenge: vec![c],
-        }
-        )
+            digest: h.clone(),
+        })
     }
 
-    fn verify(
-        params: &Self::PublicParams,
-        proof: &Self::Proof,
-    ) -> Result<bool, SigmaErrors> {
+    fn verify(params: &Self::PublicParams, proof: &Self::Proof) -> Result<bool, SigmaErrors> {
         // initialization
         let start = start_timer!(|| "running sigma protocol verify algorithm...");
         let mut transcript = ProofTranscript::<C::ScalarField>::new(b"SchnorrSignature");
 
-        // compute the challenge
+        // append commitments and messages
         transcript.append_serializable_element(b"witness commitment", &proof.commitments[0])?;
         transcript.append_serializable_element(b"masking commitment", &proof.commitments[1])?;
+
+        // append the message digest to the transcript
+        let h = digest(&params.message);
+        assert_eq!(h, proof.digest);
+        let mut h_msg: &mut [u8] = &mut [0; 32];
+        h_msg.write(h.as_bytes()).unwrap();
+        transcript.append_message(b"message digest", &h_msg)?;
+
+        // generate the challenge
         let c = transcript.get_and_append_challenge(b"challenge")?;
         if c != proof.challenge[0] {
             return Err(SigmaErrors::InvalidProof(
-                "invalid challenge value".to_string()
+                "invalid challenge value".to_string(),
             ));
         }
 
@@ -130,9 +148,7 @@ where
         let zr = proof.opening[params.num_witness];
         let rhs = COM::commit(&params.public_parameters, &z, &zr)?;
         if lhs != rhs {
-            return Err(SigmaErrors::InvalidProof(
-                "verification failed".to_string()
-            ));
+            return Err(SigmaErrors::InvalidProof("verification failed".to_string()));
         }
 
         // verifying ends
@@ -145,8 +161,8 @@ where
 mod tests {
     use super::*;
     use crate::commitment::pedersen::PedersenCommitmentScheme;
-    use ark_std::UniformRand;
     use ark_secp256k1::{Fr, Projective};
+    use ark_std::UniformRand;
 
     #[test]
     fn test_sigma() {
@@ -156,7 +172,8 @@ mod tests {
 
         type Schnorr = SchnorrProtocol<Projective, PedersenCommitmentScheme<Projective>>;
         // setup algorithm
-        let params = Schnorr::setup(&mut rng, &wit, supported_size).unwrap();
+        let message = String::from("Welcome to the world of Zero Knowledge!");
+        let params = Schnorr::setup(&mut rng, &wit, &message, supported_size).unwrap();
         // prove algorithm
         let proof = Schnorr::prove(&mut rng, &params, &wit).unwrap();
         // verify algorithm

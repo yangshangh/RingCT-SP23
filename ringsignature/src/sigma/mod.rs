@@ -1,7 +1,7 @@
-use ark_ec::CurveGroup;
 use crate::commitment::CommitmentScheme;
+use crate::errors::SigmaErrors;
+use ark_ec::CurveGroup;
 use ark_std::rand::Rng;
-use crate::errors::{SigmaErrors};
 
 pub mod transcript;
 
@@ -25,7 +25,8 @@ where
     fn setup<R: Rng>(
         rng: &mut R,
         wit: &Self::Witness,
-        supported_size: usize
+        msg: &String,
+        supported_size: usize,
     ) -> Result<Self::PublicParams, SigmaErrors>;
 
     /// Prove algorithm generates the proof with inputs
@@ -40,8 +41,5 @@ where
 
     /// Verify algorithm checks the validity of the proof
     /// outputs either 1 (pass) or 0 (fail)
-    fn verify(
-        params: &Self::PublicParams,
-        proof: &Self::Proof,
-    ) -> Result<bool, SigmaErrors>;
+    fn verify(params: &Self::PublicParams, proof: &Self::Proof) -> Result<bool, SigmaErrors>;
 }

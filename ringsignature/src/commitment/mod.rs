@@ -1,14 +1,13 @@
-pub mod structs;
 pub mod pedersen;
-use ark_std::rand::Rng;
+pub mod structs;
+use crate::errors::CommitmentErrors;
 use ark_ec::CurveGroup;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::rand::Rng;
 use std::fmt::Debug;
-use crate::errors::CommitmentErrors;
 
 /// This trait defines APIs for (vector) commitment schemes with hiding property.
-pub trait CommitmentScheme<C:CurveGroup>:
-{
+pub trait CommitmentScheme<C: CurveGroup> {
     /// public parameters
     type PublicParams: Clone + Debug;
     /// message
@@ -23,7 +22,7 @@ pub trait CommitmentScheme<C:CurveGroup>:
     /// Setup algorithm generates the public parameter with given size
     fn setup<R: Rng>(
         rng: &mut R,
-        supported_size: usize
+        supported_size: usize,
     ) -> Result<Self::PublicParams, CommitmentErrors>;
 
     /// Commit algorithm generates the (hiding) commitment with inputs
@@ -38,10 +37,7 @@ pub trait CommitmentScheme<C:CurveGroup>:
 
     /// Open algorithm outputs the corresponding message and random
     /// for the given commitment
-    fn open(
-        m: &Self::Message,
-        r: &Self::Random,
-    ) -> Result<Self::Opening, CommitmentErrors>;
+    fn open(m: &Self::Message, r: &Self::Random) -> Result<Self::Opening, CommitmentErrors>;
 
     /// Verify algorithm checks the validity of the opening
     /// outputs either 1 (pass) or 0 (fail)
