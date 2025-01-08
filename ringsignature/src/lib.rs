@@ -5,9 +5,8 @@ extern crate test;
 mod commitment;
 mod errors;
 pub mod sigma;
-// mod schnorr;
-mod ringsig;
 mod schnorr;
+mod ringsig;
 mod utils;
 
 pub use crate::errors::*;

@@ -1,5 +1,6 @@
 pub mod pedersen;
 pub mod structs;
+
 use crate::errors::CommitmentErrors;
 use ark_ec::CurveGroup;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -32,12 +33,15 @@ pub trait CommitmentScheme<C: CurveGroup> {
     fn commit(
         params: &Self::PublicParams,
         m: &Self::Message,
-        r: &Self::Random,
+        opt_r: Option<&Self::Random>,
     ) -> Result<Self::Commitment, CommitmentErrors>;
 
     /// Open algorithm outputs the corresponding message and random
     /// for the given commitment
-    fn open(m: &Self::Message, r: &Self::Random) -> Result<Self::Opening, CommitmentErrors>;
+    fn open(
+        m: &Self::Message,
+        opt_r: Option<&Self::Random>
+    ) -> Result<Self::Opening, CommitmentErrors>;
 
     /// Verify algorithm checks the validity of the opening
     /// outputs either 1 (pass) or 0 (fail)

@@ -14,7 +14,9 @@ where
     type PublicParams;
     /// witness vector
     type Witness;
-    // challenge
+    /// commitment vector
+    type Commitments;
+    /// challenge
     type Challenge;
     /// opening
     type Proof;
@@ -24,7 +26,7 @@ where
     /// 2. commit the witness based on the public params
     fn setup<R: Rng>(
         rng: &mut R,
-        wit: &Self::Witness,
+        wit: &mut Self::Witness,
         msg: &String,
         supported_size: usize,
     ) -> Result<Self::PublicParams, SigmaErrors>;
@@ -41,5 +43,8 @@ where
 
     /// Verify algorithm checks the validity of the proof
     /// outputs either 1 (pass) or 0 (fail)
-    fn verify(params: &Self::PublicParams, proof: &Self::Proof) -> Result<bool, SigmaErrors>;
+    fn verify(
+        params: &Self::PublicParams,
+        proof: &Self::Proof
+    ) -> Result<bool, SigmaErrors>;
 }

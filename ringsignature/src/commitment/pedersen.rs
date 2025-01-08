@@ -9,7 +9,8 @@ use crate::commitment::{
 };
 use crate::CommitmentErrors;
 
-// Pedersen (Vector) Commitment
+/// Pedersen (Vector) Commitment with form
+/// com(vec_m, r) = vec_g^vec_m + h^r (perfectly hiding)
 #[derive(Clone, Debug)]
 pub struct PedersenCommitmentScheme<C: CurveGroup> {
     phantom: PhantomData<C>,
@@ -32,8 +33,10 @@ impl<C: CurveGroup> CommitmentScheme<C> for PedersenCommitmentScheme<C> {
         rng: &mut R,
         supported_size: usize,
     ) -> Result<Self::PublicParams, CommitmentErrors> {
+        // h_scalar should be dropped
         let h_scalar = C::ScalarField::rand(rng);
         let g = C::generator();
+        // generator vector with unknown DL relation
         let generators = vec![C::Affine::rand(rng); supported_size];
         let pp = Self::PublicParams {
             h: g.mul(h_scalar),
@@ -51,7 +54,7 @@ impl<C: CurveGroup> CommitmentScheme<C> for PedersenCommitmentScheme<C> {
     fn commit(
         params: &Self::PublicParams,
         m: &Self::Message,
-        r: &Self::Random,
+        opt_r: Option<&Self::Random>,
     ) -> Result<Self::Commitment, CommitmentErrors> {
         let start = start_timer!(|| "generating pedersen commitment...");
         let params = params;
@@ -61,8 +64,12 @@ impl<C: CurveGroup> CommitmentScheme<C> for PedersenCommitmentScheme<C> {
             ));
         }
         let msm = C::msm(&params.vec_g, m).unwrap();
+        let cm: C;
 
-        let cm = params.h.mul(r) + msm;
+        match opt_r {
+            Some(r) => cm = params.h.mul(r) + msm,
+            None => cm = msm,
+        }
         end_timer!(start);
         Ok(cm)
     }
@@ -70,11 +77,19 @@ impl<C: CurveGroup> CommitmentScheme<C> for PedersenCommitmentScheme<C> {
     /// Open algorithm outputs the following as the opening of commitment
     /// - m: message vector
     /// - r: random element for hiding
-    fn open(m: &Self::Message, r: &Self::Random) -> Result<Self::Opening, CommitmentErrors> {
-        // TODO: maybe we can convert m, r in Vec<usize> to Vec<F> here?
+    fn open(
+        m: &Self::Message,
+        opt_r: Option<&Self::Random>,
+    ) -> Result<Self::Opening, CommitmentErrors> {
+        let opt_random :Option<C::ScalarField>;
+        match opt_r {
+            Some(r) => opt_random = Some(r.clone()),
+            None => opt_random = None,
+        }
+
         Ok(Self::Opening {
             message: m.clone(),
-            random: r.clone(),
+            opt_random: opt_random,
         })
     }
 
@@ -92,7 +107,11 @@ impl<C: CurveGroup> CommitmentScheme<C> for PedersenCommitmentScheme<C> {
         let start = start_timer!(|| "checking pedersen commitment...");
         let params = params;
         let msm = C::msm(&params.vec_g, &open.message).unwrap();
-        let cm_prime = params.h.mul(&open.random) + msm;
+        let cm_prime: C;
+        match open.opt_random {
+            Some(r) => cm_prime = params.h.mul(r) + msm,
+            None => cm_prime = msm,
+        }
         end_timer!(start);
         Ok(&cm_prime == cm)
     }
@@ -116,9 +135,9 @@ mod tests {
         let field_m: Vec<Fr> = convert(&m);
         let r = Fr::rand(&mut rng);
 
-        let cm = PedersenCommitmentScheme::<Projective>::commit(&params, &field_m, &r).unwrap();
+        let cm = PedersenCommitmentScheme::<Projective>::commit(&params, &field_m, Some(&r)).unwrap();
 
-        let opening = PedersenCommitmentScheme::<Projective>::open(&field_m, &r).unwrap();
+        let opening = PedersenCommitmentScheme::<Projective>::open(&field_m, Some(&r)).unwrap();
 
         assert_eq!(
             PedersenCommitmentScheme::<Projective>::verify(&params, &cm, &opening).unwrap(),
@@ -136,6 +155,6 @@ mod tests {
         let m: Vec<G1Fr> = vec![G1Fr::rand(&mut rng); supported_size];
         let r = G1Fr::rand(&mut rng);
 
-        b.iter(|| PedersenCommitmentScheme::<G1Projective>::commit(&params, &m, &r));
+        b.iter(|| PedersenCommitmentScheme::<G1Projective>::commit(&params, &m, Some(&r)));
     }
 }

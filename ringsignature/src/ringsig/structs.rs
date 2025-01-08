@@ -2,7 +2,7 @@ use crate::commitment::CommitmentScheme;
 use ark_ec::CurveGroup;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct SchnorrProof<C: CurveGroup, COM: CommitmentScheme<C>> {
+pub struct RingSignature<C: CurveGroup, COM: CommitmentScheme<C>> {
     // the intermediate commitment vector generated along the proving
     pub commitments: Vec<COM::Commitment>,
     // the opening vector generated along the proving
@@ -14,15 +14,15 @@ pub struct SchnorrProof<C: CurveGroup, COM: CommitmentScheme<C>> {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct SchnorrParams<C: CurveGroup, COM: CommitmentScheme<C>> {
-    // the witness commitments in the statement
-    pub com_witness: Vec<COM::Commitment>,
+pub struct RingSignatureParams<C: CurveGroup, COM: CommitmentScheme<C>> {
     // the number of witness elements
     pub num_witness: usize,
     // the number of public inputs (commitments)
     pub num_pub_inputs: usize,
-    // the generators for commitment commitments
+    // the generators for commitments
     pub com_parameters: COM::PublicParams,
     // the signed message
     pub message: String,
+    // public key vector
+    pub vec_pk: Vec<C>,
 }
