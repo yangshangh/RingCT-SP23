@@ -33,14 +33,15 @@ pub trait CommitmentScheme<C: CurveGroup> {
     fn commit(
         params: &Self::PublicParams,
         m: &Self::Message,
-        opt_r: Option<&Self::Random>,
+        r: &Self::Random,
+        info: &str,
     ) -> Result<Self::Commitment, CommitmentErrors>;
 
     /// Open algorithm outputs the corresponding message and random
     /// for the given commitment
     fn open(
         m: &Self::Message,
-        opt_r: Option<&Self::Random>
+        r: &Self::Random,
     ) -> Result<Self::Opening, CommitmentErrors>;
 
     /// Verify algorithm checks the validity of the opening

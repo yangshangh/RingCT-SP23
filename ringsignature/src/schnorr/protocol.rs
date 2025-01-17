@@ -55,7 +55,7 @@ where
         let com_params = COM::setup(rng, supported_size)?;
         // compute the witness commitment
         let r_wit = C::ScalarField::rand(rng);
-        let com_wit = vec![COM::commit(&com_params, wit, Some(&r_wit))?];
+        let com_wit = vec![COM::commit(&com_params, wit, &r_wit, "on witness")?];
         wit.push(r_wit);
         // outputs
         let schnorr_params = SchnorrParams {
@@ -90,7 +90,7 @@ where
         // sample the masking vector and compute its commitment
         let mask = vec![C::ScalarField::rand(rng); params.num_witness-1];
         let r_mask = C::ScalarField::rand(rng);
-        let com_mask = COM::commit(&params.com_parameters, &mask, Some(&r_mask))?;
+        let com_mask = COM::commit(&params.com_parameters, &mask, &r_mask, "on masking")?;
         transcript.append_serializable_element(b"masking commitment", &com_mask)?;
 
         // append the message digest to the transcript
@@ -151,8 +151,8 @@ where
         let lhs = params.com_witness[0].mul(c) + proof.commitments[0].clone();
 
         let z = proof.opening[0..params.num_witness-1].to_vec();
-        let zr = Some(&proof.opening[params.num_witness-1]);
-        let rhs = COM::commit(&params.com_parameters, &z, zr)?;
+        let zr = proof.opening[params.num_witness-1];
+        let rhs = COM::commit(&params.com_parameters, &z, &zr, "on opening")?;
         if lhs != rhs {
             return Err(SigmaErrors::InvalidProof("verification failed".to_string()));
         }

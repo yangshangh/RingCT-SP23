@@ -1,7 +1,7 @@
 use ark_ff::PrimeField;
 use ark_ec::CurveGroup;
 use rand::{seq::SliceRandom, thread_rng};
-
+use std::iter;
 
 pub fn convert<F: PrimeField>(m: &[u64]) -> Vec<F> {
     let mut vec_field: Vec<F> = Vec::new();
@@ -23,6 +23,42 @@ pub fn shuffle<C: CurveGroup>(vec_pk: & mut Vec<C::Affine>, pk: C::Affine) -> Ve
         }
     }
     vec_b
+}
+
+pub fn scalar_product<F: PrimeField>(vec_a: &Vec<F>, c: &F) -> Vec<F> {
+    vec_a.iter()
+        .map(|&a| a * c).collect()
+}
+
+pub fn inner_product<F: PrimeField>(vec_a: &Vec<F>, vec_b: &Vec<F>) -> F {
+    assert_eq!(vec_a.len(), vec_b.len(), "Vectors must be of the same length");
+
+    vec_a.iter()
+        .zip(vec_b.iter())
+        .map(|(&a, &b)| a * b)
+        .fold(F::zero(), |acc, x| acc + x)
+}
+
+pub fn vec_add<F: PrimeField>(vec_a: &Vec<F>, vec_b: &Vec<F>) -> Vec<F> {
+    assert_eq!(vec_a.len(), vec_b.len(), "Vectors must be of the same length");
+    let result = vec_a.iter()
+        .zip(vec_b.iter())
+        .map(|(&a, &b)| a + b).collect();
+    result
+}
+
+pub fn hadamard_product<F: PrimeField>(vec_a: &Vec<F>, vec_b: &Vec<F>) -> Vec<F> {
+    assert_eq!(vec_a.len(), vec_b.len(), "Vectors must be of the same length");
+    let result = vec_a.iter()
+        .zip(vec_b.iter())
+        .map(|(&a, &b)| a * b).collect();
+    result
+}
+
+pub fn generate_powers<F: PrimeField>(y: F, n: usize) -> Vec<F> {
+    iter::successors(Some(y), |&current_power| Some(current_power * y))
+        .take(n)
+        .collect()
 }
 
 #[cfg(test)]
@@ -52,5 +88,24 @@ mod tests {
                 assert_eq!(pk, vec_pk[i]);
             }
         }
+    }
+
+    #[test]
+    fn test_inner_product() {
+        let a: [u64; 4] = [1, 2, 3, 4];
+        let vec_a: Vec<Fr> = convert(&a);
+        let b: [u64; 4] = [4, 3, 2, 1];
+        let vec_b: Vec<Fr> = convert(&b);
+
+        let result = inner_product(&vec_a, &vec_b);
+        assert_eq!(result, Fr::from(20u64));
+    }
+
+    #[test]
+    fn test_generate_powers() {
+        let y = Fr::from(2u64);
+        let n = 4;
+        let result = generate_powers(y, n);
+        assert_eq!(result, vec![Fr::from(2u64), Fr::from(4u64), Fr::from(8u64), Fr::from(16u64)]);
     }
 }
