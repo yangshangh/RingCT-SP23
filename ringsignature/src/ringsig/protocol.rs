@@ -112,14 +112,8 @@ where
         let beta = C::ScalarField::rand(rng);
         let vec_r0 = vec![C::ScalarField::rand(rng); vec_b0.len()];
         let vec_r1 = vec![C::ScalarField::rand(rng); vec_b1.len()];
-        // A1 = g^{b_0}u^{alpha}, A2 = h^{b_1}
-        let com_A1 = COM::commit(&param_g_u, &vec_b0, &alpha, "A")?;
-        let com_A2 = COM::commit(&param_h_v, &vec_b1, &C::ScalarField::zero(), "A")?;
-        let com_A = com_A1 + com_A2;
-        // B1 = g^{r_0}u^{beta}, B2 = h^{r_1}
-        let com_B1 = COM::commit(&param_g_u, &vec_r0, &beta, "B")?;
-        let com_B2 = COM::commit(&param_h_v, &vec_r1, &C::ScalarField::zero(), "B")?;
-        let com_B = com_B1 + com_B2;
+        let com_A = COM::batch_commit(vec![&param_g_u, &param_h_v], vec![&vec_b0, &vec_b1], vec![&alpha, &C::ScalarField::zero()], "A")?;
+        let com_B = COM::batch_commit(vec![&param_g_u, &param_h_v], vec![&vec_r0, &vec_r1], vec![&beta, &C::ScalarField::zero()], "B")?;
 
         // P->V: A,B
         transcript.append_serializable_element(b"commitments A,B", &[com_A, com_B])?;
@@ -149,8 +143,8 @@ where
 
         let com_E = C::msm(&params.vec_pk, &vec_r0_yn).unwrap() + COM::commit(&param_key, &vec![neg_rs], &C::ScalarField::zero(), "E")?;
         let vec_0n = vec![C::ScalarField::zero(); params.num_pub_inputs];
-        let com_T1 = COM::commit(param_h_v, &vec_0n, &t1, "T1")? + COM::commit(&param_g_u, &vec_0n, &tau1, "T1")?;
-        let com_T2 = COM::commit(param_h_v, &vec_0n, &t2, "T2")? + COM::commit(&param_g_u, &vec_0n, &tau2, "T2")?;
+        let com_T1 = COM::batch_commit(vec![&param_h_v, &param_g_u], vec![&vec_0n, &vec_0n], vec![&t1, &tau1], "T1")?;
+        let com_T2 = COM::batch_commit(vec![&param_h_v, &param_g_u], vec![&vec_0n, &vec_0n], vec![&t2, &tau2], "T2")?;
 
         // P->V: E, T1, T2
         transcript.append_serializable_element(b"commitments A,B", &[com_E, com_T1, com_T2])?;
@@ -168,6 +162,7 @@ where
         let b0_z1n_r0x = vec_add(&vec_b0, &vec_add(&vec_z1n, &scalar_product(&vec_r0, &x)));
         let zeta = hadamard_product(&b0_z1n_r0x, &powers_yn);
         let eta = vec_add(&vec_b1, &vec_add(&vec_z1n, &scalar_product(&vec_r1, &x)));
+
         // computes hat_t = <zeta, eta>
         let hat_t = inner_product(&zeta, &eta);
 

@@ -1,14 +1,12 @@
-use crate::commitment::CommitmentScheme;
 use crate::errors::SigmaErrors;
 use ark_ec::CurveGroup;
 use ark_std::rand::Rng;
 
 pub mod transcript;
 
-pub trait SigmaProtocol<C, COM>
+pub trait SigmaProtocol<C>
 where
     C: CurveGroup,
-    COM: CommitmentScheme<C>,
 {
     /// public parameters
     type PublicParams;

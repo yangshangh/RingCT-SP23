@@ -3,10 +3,7 @@ use ark_std::{end_timer, marker::PhantomData, rand::Rng, start_timer, UniformRan
 
 use std::fmt::Debug;
 
-use crate::commitment::{
-    structs::{PedersenOpening, PedersenParams},
-    CommitmentScheme,
-};
+use crate::commitment::{PedersenOpening, PedersenParams};
 use crate::CommitmentErrors;
 
 /// Pedersen (Vector) Commitment with form
@@ -16,29 +13,20 @@ pub struct PedersenCommitmentScheme<C: CurveGroup> {
     phantom: PhantomData<C>,
 }
 
-impl<C: CurveGroup> CommitmentScheme<C> for PedersenCommitmentScheme<C> {
-    // Parameters
-    type PublicParams = PedersenParams<C>;
-    // witnesses including message vector and random
-    type Message = Vec<C::ScalarField>;
-    type Random = C::ScalarField;
-    // commitment and opening
-    type Commitment = C;
-    type Opening = PedersenOpening<C>;
-
+impl<C: CurveGroup> PedersenCommitmentScheme<C> {
     /// Setup algorithm generates public parameters for Pedersen Commitment includes
     /// - h: a generator
     /// - vec_g: a vector of generators in length of supported_size
-    fn setup<R: Rng>(
+    pub fn setup<R: Rng>(
         rng: &mut R,
         supported_size: usize,
-    ) -> Result<Self::PublicParams, CommitmentErrors> {
+    ) -> Result<PedersenParams<C>, CommitmentErrors> {
         // h_scalar should be dropped
         let h_scalar = C::ScalarField::rand(rng);
         let g = C::generator();
         // generator vector with unknown DL relation
         let generators = vec![C::Affine::rand(rng); supported_size];
-        let pp = Self::PublicParams {
+        let pp = PedersenParams {
             gen: g.mul(h_scalar),
             vec_gen: generators,
         };
@@ -51,12 +39,12 @@ impl<C: CurveGroup> CommitmentScheme<C> for PedersenCommitmentScheme<C> {
     /// - r: random element for hiding
     /// then outputs
     /// - cm: a pedersen vector commitment
-    fn commit(
-        params: &Self::PublicParams,
-        m: &Self::Message,
-        r: &Self::Random,
+    pub fn commit(
+        params: &PedersenParams<C>,
+        m: &Vec<C::ScalarField>,
+        r: &C::ScalarField,
         info: &str,
-    ) -> Result<Self::Commitment, CommitmentErrors> {
+    ) -> Result<C, CommitmentErrors> {
         let log_info = "generating pedersen commitment ".to_owned() + info;
         let start = start_timer!(|| log_info);
         let params = params;
@@ -74,11 +62,11 @@ impl<C: CurveGroup> CommitmentScheme<C> for PedersenCommitmentScheme<C> {
     /// Open algorithm outputs the following as the opening of commitment
     /// - m: message vector
     /// - r: random element for hiding
-    fn open(
-        m: &Self::Message,
-        r: &Self::Random,
-    ) -> Result<Self::Opening, CommitmentErrors> {
-        Ok(Self::Opening {
+    pub fn open(
+        m: &Vec<C::ScalarField>,
+        r: &C::ScalarField,
+    ) -> Result<PedersenOpening<C>, CommitmentErrors> {
+        Ok(PedersenOpening {
             message: m.clone(),
             random: r.clone(),
         })
@@ -90,10 +78,10 @@ impl<C: CurveGroup> CommitmentScheme<C> for PedersenCommitmentScheme<C> {
     /// - open: opening includes m and r
     /// then outputs
     /// - cm: a pedersen vector commitment
-    fn verify(
-        params: &Self::PublicParams,
-        cm: &Self::Commitment,
-        open: &Self::Opening,
+    pub fn verify(
+        params: &PedersenParams<C>,
+        cm: &C,
+        open: &PedersenOpening<C>,
     ) -> Result<bool, CommitmentErrors> {
         let start = start_timer!(|| "checking pedersen commitment...");
         let params = params;
@@ -121,11 +109,8 @@ mod tests {
         let m: [u64; 10] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
         let field_m: Vec<Fr> = convert(&m);
         let r = Fr::rand(&mut rng);
-
         let cm = PedersenCommitmentScheme::<Projective>::commit(&params, &field_m, &r, "cm").unwrap();
-
         let opening = PedersenCommitmentScheme::<Projective>::open(&field_m, &r).unwrap();
-
         assert_eq!(
             PedersenCommitmentScheme::<Projective>::verify(&params, &cm, &opening).unwrap(),
             true

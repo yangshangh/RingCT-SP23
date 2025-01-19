@@ -2,19 +2,17 @@ use ark_ec::CurveGroup;
 use ark_std::{end_timer, rand::Rng, start_timer, UniformRand};
 use sha256::digest;
 use std::{fmt::Debug, io::Write, marker::PhantomData};
-use crate::commitment::CommitmentScheme;
+use crate::commitment::pedersen::PedersenCommitmentScheme;
 use crate::errors::SigmaErrors;
 use crate::schnorr::structs::{SchnorrParams, SchnorrProof};
 use crate::sigma::{transcript::ProofTranscript, SigmaProtocol};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct SchnorrProtocol<C, COM>
+pub struct SchnorrProtocol<C>
 where
     C: CurveGroup,
-    COM: CommitmentScheme<C>,
 {
-    phantom1: PhantomData<C>,
-    phantom2: PhantomData<COM>,
+    phantom: PhantomData<C>,
 }
 
 /// Implement a sigma protocol as a schnorr protocol, including 3-move:
@@ -22,14 +20,12 @@ where
 /// P->V: commitment com(mask)
 /// V->P: challenge c
 /// P->V: openings z = wit + c*mask, z_r = r_wit + c*r_mask
-impl<C, COM> SigmaProtocol<C, COM> for SchnorrProtocol<C, COM>
+impl<C> SigmaProtocol<C> for SchnorrProtocol<C>
 where
     C: CurveGroup,
-    COM:
-        CommitmentScheme<C, Message = Vec<C::ScalarField>, Random = C::ScalarField, Commitment = C>,
 {
     /// public parameters
-    type PublicParams = SchnorrParams<C, COM>;
+    type PublicParams = SchnorrParams<C>;
     /// witness
     type Witness = Vec<C::ScalarField>;
     /// witness commitments
@@ -37,7 +33,7 @@ where
     /// challenge
     type Challenge = Vec<C::ScalarField>;
     /// proof
-    type Proof = SchnorrProof<C, COM>;
+    type Proof = SchnorrProof<C>;
 
     /// Setup algorithm with
     /// Inputs:
@@ -52,10 +48,11 @@ where
         msg: &String,
         supported_size: usize,
     ) -> Result<Self::PublicParams, SigmaErrors> {
-        let com_params = COM::setup(rng, supported_size)?;
+        let start = start_timer!(|| "running sigma protocol setup algorithm...");
+        let com_params = PedersenCommitmentScheme::setup(rng, supported_size)?;
         // compute the witness commitment
         let r_wit = C::ScalarField::rand(rng);
-        let com_wit = vec![COM::commit(&com_params, wit, &r_wit, "on witness")?];
+        let com_wit = vec![PedersenCommitmentScheme::commit(&com_params, wit, &r_wit, "on witness")?];
         wit.push(r_wit);
         // outputs
         let schnorr_params = SchnorrParams {
@@ -65,6 +62,7 @@ where
             com_parameters: com_params,
             message: msg.clone(),
         };
+        end_timer!(start);
         Ok(schnorr_params)
     }
 
@@ -90,7 +88,7 @@ where
         // sample the masking vector and compute its commitment
         let mask = vec![C::ScalarField::rand(rng); params.num_witness-1];
         let r_mask = C::ScalarField::rand(rng);
-        let com_mask = COM::commit(&params.com_parameters, &mask, &r_mask, "on masking")?;
+        let com_mask = PedersenCommitmentScheme::commit(&params.com_parameters, &mask, &r_mask, "on masking")?;
         transcript.append_serializable_element(b"masking commitment", &com_mask)?;
 
         // append the message digest to the transcript
@@ -152,7 +150,7 @@ where
 
         let z = proof.opening[0..params.num_witness-1].to_vec();
         let zr = proof.opening[params.num_witness-1];
-        let rhs = COM::commit(&params.com_parameters, &z, &zr, "on opening")?;
+        let rhs = PedersenCommitmentScheme::commit(&params.com_parameters, &z, &zr, "on opening")?;
         if lhs != rhs {
             return Err(SigmaErrors::InvalidProof("verification failed".to_string()));
         }
@@ -166,7 +164,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commitment::pedersen::PedersenCommitmentScheme;
     use ark_secp256k1::{Fr, Projective};
     use ark_std::UniformRand;
 
@@ -176,7 +173,7 @@ mod tests {
         let supported_size = 10;
         let mut wit = vec![Fr::rand(&mut rng); supported_size];
 
-        type Schnorr = SchnorrProtocol<Projective, PedersenCommitmentScheme<Projective>>;
+        type Schnorr = SchnorrProtocol<Projective>;
         // setup algorithm
         let message = String::from("Welcome to the world of Zero Knowledge!");
         let params = Schnorr::setup(&mut rng, &mut wit, &message, supported_size).unwrap();
