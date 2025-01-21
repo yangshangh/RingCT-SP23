@@ -5,33 +5,30 @@ use ark_ec::CurveGroup;
 use ark_ff::Field;
 use ark_std::{end_timer, rand::Rng, start_timer, UniformRand, Zero, One};
 use sha256::digest;
-use crate::commitment::CommitmentScheme;
+use crate::commitment::pedersen::PedersenCommitmentScheme;
+use crate::commitment::PedersenParams;
 use crate::ringsig::structs::{RingSignature, RingSignatureParams, Openings};
 use crate::sigma::{transcript::ProofTranscript, SigmaProtocol};
 use crate::SigmaErrors;
 use crate::utils::vec::*;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct RingSignatureScheme<C, COM>
+pub struct RingSignatureScheme<C>
 where
     C: CurveGroup,
-    COM: CommitmentScheme<C>,
 {
-    phantom1: PhantomData<C>,
-    phantom2: PhantomData<COM>,
+    phantom: PhantomData<C>,
 }
 
 /// Implement a sigma protocol as a ring signature scheme (without compression), including 5-move:
 /// Relation: P knows a sk to a pk among the vector vec_pk
 /// Formalized Relation: P knows a sk satisfying <vec_pk, vec_b> = com(sk)
-impl<C, COM> SigmaProtocol<C, COM> for RingSignatureScheme<C, COM>
+impl<C> SigmaProtocol<C> for RingSignatureScheme<C>
 where
     C: CurveGroup,
-    COM:
-    CommitmentScheme<C, Message = Vec<C::ScalarField>, Random = C::ScalarField, Commitment = C>,
 {
     /// public parameters
-    type PublicParams = RingSignatureParams<C, COM>;
+    type PublicParams = RingSignatureParams<C>;
     /// witness
     type Witness = Vec<C::ScalarField>;
     /// witness commitments
@@ -39,7 +36,7 @@ where
     // challenge
     type Challenge = Vec<C::ScalarField>;
     /// proof
-    type Proof = RingSignature<C, COM>;
+    type Proof = RingSignature<C>;
 
     fn setup<R: Rng>(
         rng: &mut R,
@@ -48,15 +45,15 @@ where
         supported_size: usize, // ring size
     ) -> Result<Self::PublicParams, SigmaErrors> {
         // generate commitment scheme parameters (vec_g, u)
-        let com_params_1 = COM::setup(rng, supported_size)?;
+        let com_params_1 = PedersenCommitmentScheme::<C>::setup(rng, supported_size)?;
         // generate commitment scheme parameters (vec_h, v)
-        let com_params_2 = COM::setup(rng, supported_size)?;
+        let com_params_2 = PedersenCommitmentScheme::<C>::setup(rng, supported_size)?;
 
         // generate public key parameters (g)
-        let key_params = COM::setup(rng, 1)?;
+        let key_params = PedersenCommitmentScheme::<C>::setup(rng, 1)?;
 
         // generate pk vectors
-        let pk:C::Affine = COM::commit(&key_params, wit, &C::ScalarField::zero(), "as pk")?.into_affine();
+        let pk:C::Affine = PedersenCommitmentScheme::commit(&key_params, wit, &C::ScalarField::zero(), "as pk")?.into_affine();
         let mut vec_pk = vec![C::Affine::rand(rng); supported_size-1];
         // add pk to the vector and shuffle it
         vec_pk.push(pk);
@@ -66,7 +63,7 @@ where
         Ok(RingSignatureParams {
             num_witness: wit.len(),
             num_pub_inputs: supported_size,
-            com_parameters: (com_params_1, com_params_2, key_params),
+            com_parameters: vec![com_params_1, com_params_2, key_params],
             message: msg.clone(),
             vec_pk,
         })
@@ -83,9 +80,9 @@ where
         transcript.append_serializable_element(b"public list", &params.vec_pk)?;
 
         // parse commitment parameters
-        let param_g_u = &params.com_parameters.0;
-        let param_h_v = &params.com_parameters.1;
-        let param_key = &params.com_parameters.2;
+        let param_g_u = &params.com_parameters[0];
+        let param_h_v = &params.com_parameters[1];
+        let param_key = &params.com_parameters[2];
         // parse wit as vec_sk and vec_b
         let vec_sk = wit[0..wit.len()-params.num_pub_inputs].to_vec();
         let vec_b = wit[wit.len()-params.num_pub_inputs..].to_vec();
@@ -112,8 +109,10 @@ where
         let beta = C::ScalarField::rand(rng);
         let vec_r0 = vec![C::ScalarField::rand(rng); vec_b0.len()];
         let vec_r1 = vec![C::ScalarField::rand(rng); vec_b1.len()];
-        let com_A = COM::batch_commit(vec![&param_g_u, &param_h_v], vec![&vec_b0, &vec_b1], vec![&alpha, &C::ScalarField::zero()], "A")?;
-        let com_B = COM::batch_commit(vec![&param_g_u, &param_h_v], vec![&vec_r0, &vec_r1], vec![&beta, &C::ScalarField::zero()], "B")?;
+        let com_A = PedersenCommitmentScheme::commit(&param_g_u, &vec_b0, &alpha, "on b0")?
+            + PedersenCommitmentScheme::commit(&param_h_v, &vec_b1, &C::ScalarField::zero(), "on b1")?;
+        let com_B = PedersenCommitmentScheme::commit(&param_g_u, &vec_r0, &beta, "on r0")?
+            + PedersenCommitmentScheme::commit(&param_h_v, &vec_r1, &C::ScalarField::zero(), "on r1")?;
 
         // P->V: A,B
         transcript.append_serializable_element(b"commitments A,B", &[com_A, com_B])?;
@@ -141,10 +140,13 @@ where
         let tau1 = C::ScalarField::rand(rng);
         let tau2 = C::ScalarField::rand(rng);
 
-        let com_E = C::msm(&params.vec_pk, &vec_r0_yn).unwrap() + COM::commit(&param_key, &vec![neg_rs], &C::ScalarField::zero(), "E")?;
-        let vec_0n = vec![C::ScalarField::zero(); params.num_pub_inputs];
-        let com_T1 = COM::batch_commit(vec![&param_h_v, &param_g_u], vec![&vec_0n, &vec_0n], vec![&t1, &tau1], "T1")?;
-        let com_T2 = COM::batch_commit(vec![&param_h_v, &param_g_u], vec![&vec_0n, &vec_0n], vec![&t2, &tau2], "T2")?;
+        let com_E = C::msm(&params.vec_pk, &vec_r0_yn).unwrap() + PedersenCommitmentScheme::commit(&param_key, &vec![neg_rs], &C::ScalarField::zero(), "E")?;
+        let param_u_v = PedersenParams {
+            gen: param_h_v.gen.clone(),
+            vec_gen: vec![param_g_u.gen.into_affine().clone()],
+        };
+        let com_T1 = PedersenCommitmentScheme::commit(&param_u_v, &vec![tau1], &t1, "T1")?;
+        let com_T2 = PedersenCommitmentScheme::commit(&param_u_v, &vec![tau2], &t2, "T2")?;
 
         // P->V: E, T1, T2
         transcript.append_serializable_element(b"commitments A,B", &[com_E, com_T1, com_T2])?;
@@ -218,17 +220,34 @@ where
         transcript.append_serializable_element(b"public list", &params.vec_pk)?;
 
         // parse commitment parameters
-        let param_g_u = &params.com_parameters.0;
-        let param_h_v = &params.com_parameters.1;
-        let param_key = &params.com_parameters.2;
+        let param_g_u = &params.com_parameters[0];
+        let param_h_v = &params.com_parameters[1];
+        let param_key = &params.com_parameters[2];
 
         // parse proof
         let commitments = &proof.commitments;
         let (com_A, com_B, com_E, com_T1, com_T2) = (commitments[0], commitments[1], commitments[2], commitments[3], commitments[4]);
         let openings = &proof.openings;
         let challenges = &proof.challenges;
-        let (y,z,x) = (challenges[0], challenges[1], challenges[2]);
         let digest = &proof.digest;
+
+        // check the challenges
+        transcript.append_serializable_element(b"commitments A,B", &[com_A, com_B])?;
+        let y = transcript.get_and_append_challenge(b"challenge y")?;
+        let z = transcript.get_and_append_challenge(b"challenge z")?;
+        transcript.append_serializable_element(b"commitments A,B", &[com_E, com_T1, com_T2])?;
+        let h = sha256::digest(&params.message);
+        assert_eq!(&h, digest);
+        let mut h_msg: &mut [u8] = &mut [0; 32];
+        h_msg.write(h.as_bytes()).unwrap();
+        transcript.append_message(b"message digest", &h_msg)?;
+        let x = transcript.get_and_append_challenge(b"challenge x")?;
+
+        if (y,z,x) != (challenges[0],challenges[1],challenges[2])  {
+            return Err(SigmaErrors::InvalidProof(
+                "invalid challenge value".to_string(),
+            ));
+        }
 
         // check validity of T1 T2
         // v^{hat_t} y^taux = v^delta T1^x T2^{x^2}
@@ -236,9 +255,9 @@ where
         let vec_1n = vec![C::ScalarField::one(); params.num_pub_inputs];
         let powers_yn = generate_powers(y, params.num_pub_inputs);
         let delta = inner_product(&vec_1n, &powers_yn) * (z+z*z);
-        let lhs = COM::commit(param_h_v, &vec_0n, &openings.hat_t, "on hat_t")?
-            + COM::commit(&param_g_u, &vec_0n, &openings.taux, "on tau_x")?;
-        let rhs = COM::commit(param_h_v, &vec_0n, &delta, "on delta")?
+        let lhs = PedersenCommitmentScheme::commit(param_h_v, &vec_0n, &openings.hat_t, "on hat_t")?
+            + PedersenCommitmentScheme::commit(&param_g_u, &vec_0n, &openings.taux, "on tau_x")?;
+        let rhs = PedersenCommitmentScheme::commit(param_h_v, &vec_0n, &delta, "on delta")?
             + com_T1.mul(x) + com_T2.mul(x*x);
         assert_eq!(lhs, rhs, "step 1: T1, T2 checks fail");
 
@@ -248,18 +267,18 @@ where
         // assert_eq!(hadamard_product(&powers_yn, &powers_yn_inverse), vec![C::ScalarField::one(); params.num_pub_inputs]);
         let zeta_yn = hadamard_product(&openings.zeta, &powers_yn_inverse);
         let vec_z1n = vec![z; params.num_pub_inputs];
-        let lhs = COM::commit(&param_g_u, &zeta_yn, &openings.mu, "on zeta")?
-            + COM::commit(&param_h_v, &openings.eta, &C::ScalarField::zero(), "on eta")?;
+        let lhs = PedersenCommitmentScheme::commit(&param_g_u, &zeta_yn, &openings.mu, "on zeta")?
+            + PedersenCommitmentScheme::commit(&param_h_v, &openings.eta, &C::ScalarField::zero(), "on eta")?;
         let rhs = com_A + com_B.mul(x)
-            + COM::commit(&param_g_u, &vec_z1n, &C::ScalarField::zero(), "on z1n")?
-            + COM::commit(&param_h_v, &vec_z1n, &C::ScalarField::zero(), "on z1n")?;
+            + PedersenCommitmentScheme::commit(&param_g_u, &vec_z1n, &C::ScalarField::zero(), "on z1n")?
+            + PedersenCommitmentScheme::commit(&param_h_v, &vec_z1n, &C::ScalarField::zero(), "on z1n")?;
         assert_eq!(lhs, rhs, "step 2: A,B checks fail");
 
         // check pk
         // P^zeta = g^fs E^x P^{z y^n}
         let vec_z_yn = scalar_product(&powers_yn, &z);
         let lhs = C::msm(&params.vec_pk, &openings.zeta).unwrap();
-        let rhs = COM::commit(&param_key, &vec![openings.fs], &C::ScalarField::zero(), "on fs")?
+        let rhs = PedersenCommitmentScheme::commit(&param_key, &vec![openings.fs], &C::ScalarField::zero(), "on fs")?
             + com_E.mul(x) + C::msm(&params.vec_pk, &vec_z_yn).unwrap();
         assert_eq!(lhs, rhs, "step 3: pk check fails");
 
@@ -275,7 +294,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commitment::pedersen::PedersenCommitmentScheme;
     use ark_secp256k1::{Fr, Projective};
     use ark_std::UniformRand;
 
@@ -286,7 +304,7 @@ mod tests {
         let ring_size = 10;
         let sk = Fr::rand(&mut rng);
         let mut wit = vec![sk];
-        type Ring = RingSignatureScheme<Projective, PedersenCommitmentScheme<Projective>>;
+        type Ring = RingSignatureScheme<Projective>;
         let message = String::from("Welcome to the world of Zero Knowledge!");
         // setup algorithm
         let ring_params = Ring::setup(&mut rng, &mut wit, &message, ring_size).unwrap();

@@ -7,7 +7,7 @@ mod commitment;
 mod errors;
 pub mod sigma;
 mod schnorr;
-// mod ringsig;
+mod ringsig;
 mod utils;
 
 pub use crate::errors::*;
