@@ -10,7 +10,7 @@ use crate::commitment::PedersenParams;
 use crate::ringsig::structs::{RingSignature, RingSignatureParams, Openings};
 use crate::sigma::{transcript::ProofTranscript, SigmaProtocol};
 use crate::SigmaErrors;
-use crate::utils::vec::*;
+use crate::utils::*;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RingSignatureScheme<C>

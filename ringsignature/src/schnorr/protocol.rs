@@ -2,6 +2,7 @@ use ark_ec::CurveGroup;
 use ark_std::{end_timer, rand::Rng, start_timer, UniformRand};
 use sha256::digest;
 use std::{fmt::Debug, io::Write, marker::PhantomData};
+use ark_ff::Field;
 use crate::commitment::pedersen::PedersenCommitmentScheme;
 use crate::errors::SigmaErrors;
 use crate::schnorr::structs::{SchnorrParams, SchnorrProof};
@@ -48,7 +49,7 @@ where
         msg: &String,
         supported_size: usize,
     ) -> Result<Self::PublicParams, SigmaErrors> {
-        let start = start_timer!(|| "running sigma protocol setup algorithm...");
+        let start = start_timer!(|| "running schnorr protocol setup algorithm...");
         let com_params = PedersenCommitmentScheme::setup(rng, supported_size)?;
         // compute the witness commitment
         let r_wit = C::ScalarField::rand(rng);
@@ -77,7 +78,7 @@ where
         witness: &Self::Witness,
     ) -> Result<Self::Proof, SigmaErrors> {
         // initialization
-        let start = start_timer!(|| "running sigma protocol prove algorithm...");
+        let start = start_timer!(|| "running schnorr protocol prove algorithm...");
         let mut transcript = ProofTranscript::<C::ScalarField>::new(b"SchnorrSignature");
         transcript.append_serializable_element(b"witness commitment", &params.com_witness[0])?;
 
@@ -123,7 +124,7 @@ where
 
     fn verify(params: &Self::PublicParams, proof: &Self::Proof) -> Result<bool, SigmaErrors> {
         // initialization
-        let start = start_timer!(|| "running sigma protocol verify algorithm...");
+        let start = start_timer!(|| "running schnorr protocol verify algorithm...");
         let mut transcript = ProofTranscript::<C::ScalarField>::new(b"SchnorrSignature");
 
         // append commitments and messages

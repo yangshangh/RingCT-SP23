@@ -95,7 +95,7 @@ impl<C: CurveGroup> PedersenCommitmentScheme<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::vec::convert;
+    use crate::utils::convert;
     use ark_bls12_381::{Fr as G1Fr, G1Projective};
     use ark_secp256k1::{Fr, Projective};
     use test::Bencher;

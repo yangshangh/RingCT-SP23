@@ -47,6 +47,11 @@ pub fn vec_add<F: PrimeField>(vec_a: &Vec<F>, vec_b: &Vec<F>) -> Vec<F> {
     result
 }
 
+pub fn vec_split<T: Clone>(vec: &Vec<T>, n: usize) -> (Vec<T>, Vec<T>) {
+    let (slice_l, slice_r) = vec.split_at(n);
+    (slice_l.to_vec(), slice_r.to_vec())
+}
+
 pub fn hadamard_product<F: PrimeField>(vec_a: &Vec<F>, vec_b: &Vec<F>) -> Vec<F> {
     assert_eq!(vec_a.len(), vec_b.len(), "Vectors must be of the same length");
     let result = vec_a.iter()

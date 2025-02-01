@@ -8,7 +8,7 @@ mod errors;
 pub mod sigma;
 mod schnorr;
 mod ringsig;
-mod utils;
+pub mod utils;
 
 pub use crate::errors::*;
 pub use merlin::Transcript;
