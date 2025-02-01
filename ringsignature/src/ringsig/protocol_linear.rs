@@ -5,8 +5,6 @@ use ark_ec::CurveGroup;
 use ark_ff::Field;
 use ark_std::{end_timer, rand::Rng, start_timer, UniformRand, Zero, One};
 use sha256::digest;
-
-use bulletproofs::ipa::*;
 use crate::commitment::pedersen::PedersenCommitmentScheme;
 use crate::commitment::PedersenParams;
 use crate::ringsig::structs::{RingSignature, RingSignatureParams, Openings};
@@ -192,35 +190,9 @@ where
             }
         }
         let fs = sum + rs*x;
-
-        // Bulletproofs Compression
-        let powers_yn_inverse = generate_powers(y.inverse().unwrap(), params.num_pub_inputs);
-        let mut vec_g_yn = Vec::with_capacity(param_g_u.vec_gen.len());
-        for i in 0..param_g_u.vec_gen.len() {
-            vec_g_yn.push((param_g_u.vec_gen[i]*powers_yn_inverse[i]).into_affine());
-        }
-        let n = vec_g_yn.len();
-        let mut vec_G:Vec<C::Affine> = Vec::with_capacity(n);
-        for i in 0..n {
-            vec_G.push((vec_g_yn[i] + params.vec_pk[i]).into_affine());
-        }
-        let vec_H = param_h_v.vec_gen.clone();
-        let v = param_h_v.gen.clone().into_affine();
-        let factors_G = vec![C::ScalarField::from(1u64); n];
-        let factors_H = vec![C::ScalarField::from(1u64); n];
-        let param = InnerProductParam {
-            factors_G,
-            factors_H,
-            u: v,
-            vec_G,
-            vec_H,
-        };
-
-        let (proof, open) = InnerProductProtocol::<C>::prove(&param, zeta.clone(), eta.clone())?;
-
         let openings = Openings {
-            zeta: vec![open.a],
-            eta: vec![open.b],
+            zeta,
+            eta,
             hat_t,
             taux,
             mu,
@@ -233,7 +205,6 @@ where
         Ok(RingSignature {
             commitments: vec![com_A, com_B, com_E, com_T1, com_T2],
             openings,
-            compression_proof: proof,
             challenges: vec![y,z,x],
             digest: h.clone(),
         })
@@ -244,7 +215,7 @@ where
         proof: &Self::Proof
     ) -> Result<bool, SigmaErrors> {
         // initialization
-        let start = start_timer!(|| "preprocessing sigma protocol verify algorithm...");
+        let start = start_timer!(|| "running sigma protocol prove algorithm...");
         let mut transcript = ProofTranscript::<C::ScalarField>::new(b"RingSignature");
         transcript.append_serializable_element(b"public list", &params.vec_pk)?;
 
@@ -260,55 +231,6 @@ where
         let challenges = &proof.challenges;
         let digest = &proof.digest;
 
-        let (y,z,x) = (challenges[0],challenges[1],challenges[2]);
-
-        let vec_0n = vec![C::ScalarField::zero(); params.num_pub_inputs];
-        let vec_1n = vec![C::ScalarField::one(); params.num_pub_inputs];
-        let powers_yn = generate_powers(y, params.num_pub_inputs);
-
-        // check validity of T1 T2
-        // v^{hat_t} = v^delta T1^x T2^{x^2} y^{-taux}
-        // where hat_t = <zeta, eta>
-        // let t = inner_product(&openings.zeta, &openings.eta);
-        // assert_eq!(openings.hat_t, t, "step 1: hat_t check fails");
-
-        let delta = inner_product(&vec_1n, &powers_yn) * (z+z*z);
-
-        // let lhs_step1 = PedersenCommitmentScheme::commit(param_h_v, &vec_0n, &openings.hat_t, "on hat_t")?;
-        let rhs_step1 = PedersenCommitmentScheme::commit(param_h_v, &vec_0n, &delta, "on delta")?
-            + com_T1.mul(x) + com_T2.mul(x*x) - PedersenCommitmentScheme::commit(&param_g_u, &vec_0n, &openings.taux, "on tau_x")?;
-        // assert_eq!(lhs_step1, rhs_step1, "step 1: T1, T2 checks fail");
-
-        // check validity of A B
-        // {vec_g'}^{zeta} vec_h^eta = A B^x vec_g^{z1^n} vec_h^{z1^n} u^{-mu}
-        let powers_yn_inverse = generate_powers(y.inverse().unwrap(), params.num_pub_inputs);
-        let mut vec_g_yn = Vec::with_capacity(param_g_u.vec_gen.len());
-        for i in 0..param_g_u.vec_gen.len() {
-            vec_g_yn.push((param_g_u.vec_gen[i]*powers_yn_inverse[i]).into_affine());
-        }
-        let vec_z1n = vec![z; params.num_pub_inputs];
-        let param_g_yn_u = PedersenParams {
-            gen: param_g_u.gen.clone(),
-            vec_gen: vec_g_yn,
-        };
-        // let lhs_step2 = PedersenCommitmentScheme::commit(&param_g_yn_u, &openings.zeta, &C::ScalarField::zero(), "on zeta")?
-        //    + PedersenCommitmentScheme::commit(&param_h_v, &openings.eta, &C::ScalarField::zero(), "on eta")?;
-        let rhs_step2 = com_A + com_B.mul(x)
-            + PedersenCommitmentScheme::commit(&param_g_u, &vec_z1n, &(-openings.mu), "on z1n")?
-            + PedersenCommitmentScheme::commit(&param_h_v, &vec_z1n, &C::ScalarField::zero(), "on z1n")?;
-        // assert_eq!(lhs_step2, rhs_step2, "step 2: A,B checks fail");
-
-        // check pk
-        // P^zeta = g^fs E^x P^{z y^n}
-        let vec_z_yn = scalar_product(&powers_yn, &z);
-        // let lhs_step3 = C::msm(&params.vec_pk, &openings.zeta).unwrap();
-        let rhs_step3 = PedersenCommitmentScheme::commit(&param_key, &vec![openings.fs], &C::ScalarField::zero(), "on fs")?
-            + com_E.mul(x) + C::msm(&params.vec_pk, &vec_z_yn).unwrap();
-        // assert_eq!(lhs_step3, rhs_step3, "step 3: pk check fails");
-
-        end_timer!(start);
-
-        let start = start_timer!(|| "running sigma protocol verify algorithm...");
         // check the challenges
         transcript.append_serializable_element(b"commitments A,B", &[com_A, com_B])?;
         let y = transcript.get_and_append_challenge(b"challenge y")?;
@@ -327,35 +249,42 @@ where
             ));
         }
 
-        // run Bulletproofs Compression
-        // consider aggregating the following three equation into one
-        // v^{hat_t} = v^delta T1^x T2^{x^2} y^{-taux}
-        // {vec_g'}^{zeta} vec_h^eta = A B^x vec_g^{z1^n} vec_h^{z1^n} u^{-mu}
-        // P^zeta = g^fs E^x P^{z y^n}
-        let RHS = rhs_step1 + rhs_step2 + rhs_step3;
-        let n = param_g_yn_u.vec_gen.len();
-        let mut vec_G:Vec<C::Affine> = Vec::with_capacity(n);
-        for i in 0..n {
-            vec_G.push((param_g_yn_u.vec_gen[i] + params.vec_pk[i]).into_affine());
-        }
-        let vec_H = param_h_v.vec_gen.clone();
-        let v = param_h_v.gen.clone().into_affine();
-        let factors_G = vec![C::ScalarField::from(1u64); n];
-        let factors_H = vec![C::ScalarField::from(1u64); n];
-        let param = InnerProductParam {
-            factors_G,
-            factors_H,
-            u: v,
-            vec_G,
-            vec_H,
-        };
-        let open = InnerProductOpen {
-            a: openings.zeta[0].clone(),
-            b: openings.eta[0].clone(),
-        };
+        // check validity of T1 T2
+        // v^{hat_t} y^taux = v^delta T1^x T2^{x^2}
+        let vec_0n = vec![C::ScalarField::zero(); params.num_pub_inputs];
+        let vec_1n = vec![C::ScalarField::one(); params.num_pub_inputs];
+        let powers_yn = generate_powers(y, params.num_pub_inputs);
+        let delta = inner_product(&vec_1n, &powers_yn) * (z+z*z);
+        let lhs = PedersenCommitmentScheme::commit(param_h_v, &vec_0n, &openings.hat_t, "on hat_t")?
+            + PedersenCommitmentScheme::commit(&param_g_u, &vec_0n, &openings.taux, "on tau_x")?;
+        let rhs = PedersenCommitmentScheme::commit(param_h_v, &vec_0n, &delta, "on delta")?
+            + com_T1.mul(x) + com_T2.mul(x*x);
+        assert_eq!(lhs, rhs, "step 1: T1, T2 checks fail");
 
-        // call Bulletproofs prover
-        InnerProductProtocol::<C>::verify(n, RHS, &param, &open, &proof.compression_proof)?;
+        // check validity of A B
+        // g^{zeta \circ y^n} h^eta u^mu = A B^x g^{z1^n} h^{z1^n}
+        let powers_yn_inverse = generate_powers(y.inverse().unwrap(), params.num_pub_inputs);
+        // assert_eq!(hadamard_product(&powers_yn, &powers_yn_inverse), vec![C::ScalarField::one(); params.num_pub_inputs]);
+        let zeta_yn = hadamard_product(&openings.zeta, &powers_yn_inverse);
+        let vec_z1n = vec![z; params.num_pub_inputs];
+        let lhs = PedersenCommitmentScheme::commit(&param_g_u, &zeta_yn, &openings.mu, "on zeta")?
+            + PedersenCommitmentScheme::commit(&param_h_v, &openings.eta, &C::ScalarField::zero(), "on eta")?;
+        let rhs = com_A + com_B.mul(x)
+            + PedersenCommitmentScheme::commit(&param_g_u, &vec_z1n, &C::ScalarField::zero(), "on z1n")?
+            + PedersenCommitmentScheme::commit(&param_h_v, &vec_z1n, &C::ScalarField::zero(), "on z1n")?;
+        assert_eq!(lhs, rhs, "step 2: A,B checks fail");
+
+        // check pk
+        // P^zeta = g^fs E^x P^{z y^n}
+        let vec_z_yn = scalar_product(&powers_yn, &z);
+        let lhs = C::msm(&params.vec_pk, &openings.zeta).unwrap();
+        let rhs = PedersenCommitmentScheme::commit(&param_key, &vec![openings.fs], &C::ScalarField::zero(), "on fs")?
+            + com_E.mul(x) + C::msm(&params.vec_pk, &vec_z_yn).unwrap();
+        assert_eq!(lhs, rhs, "step 3: pk check fails");
+
+        // check inner product hat_t = <zeta, eta>
+        let t = inner_product(&openings.zeta, &openings.eta);
+        assert_eq!(openings.hat_t, t, "step 4: hat_t check fails");
         let result = true;
         end_timer!(start);
         Ok(result)
@@ -372,7 +301,7 @@ mod tests {
     fn test_ringsignature() {
         // parameter setting
         let mut rng = ark_std::test_rng();
-        let ring_size = 16;
+        let ring_size = 10;
         let sk = Fr::rand(&mut rng);
         let mut wit = vec![sk];
         type Ring = RingSignatureScheme<Projective>;

@@ -2,11 +2,10 @@ use ark_ec::CurveGroup;
 use ark_std::{end_timer, rand::Rng, start_timer, UniformRand};
 use sha256::digest;
 use std::{fmt::Debug, io::Write, marker::PhantomData};
-use ark_ff::Field;
 use crate::commitment::pedersen::PedersenCommitmentScheme;
-use crate::errors::SigmaErrors;
+use utils::errors::SigmaErrors;
 use crate::schnorr::structs::{SchnorrParams, SchnorrProof};
-use crate::sigma::{transcript::ProofTranscript, SigmaProtocol};
+use utils::sigma::{transcript::ProofTranscript, SigmaProtocol};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SchnorrProtocol<C>

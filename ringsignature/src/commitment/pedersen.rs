@@ -2,9 +2,8 @@ use ark_ec::CurveGroup;
 use ark_std::{end_timer, marker::PhantomData, rand::Rng, start_timer, UniformRand};
 
 use std::fmt::Debug;
-
+use utils::errors::CommitmentErrors;
 use crate::commitment::{PedersenOpening, PedersenParams};
-use crate::CommitmentErrors;
 
 /// Pedersen (Vector) Commitment with form
 /// com(vec_m, r) = vec_g^vec_m + h^r (perfectly hiding)
@@ -95,7 +94,7 @@ impl<C: CurveGroup> PedersenCommitmentScheme<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::convert;
+    use utils::vec::convert;
     use ark_bls12_381::{Fr as G1Fr, G1Projective};
     use ark_secp256k1::{Fr, Projective};
     use test::Bencher;

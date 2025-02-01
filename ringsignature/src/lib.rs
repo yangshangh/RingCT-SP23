@@ -4,11 +4,7 @@
 extern crate test;
 
 mod commitment;
-mod errors;
-pub mod sigma;
 mod schnorr;
 mod ringsig;
-pub mod utils;
 
-pub use crate::errors::*;
 pub use merlin::Transcript;
