@@ -2,7 +2,8 @@ use ark_ec::CurveGroup;
 use ark_std::{end_timer, marker::PhantomData, rand::Rng, start_timer, UniformRand};
 
 use std::fmt::Debug;
-use utils::errors::CommitmentErrors;
+use toolbox::errors::CommitmentErrors;
+use toolbox::vec::convert;
 use crate::commitment::{PedersenOpening, PedersenParams};
 
 /// Pedersen (Vector) Commitment with form
@@ -26,7 +27,7 @@ impl<C: CurveGroup> PedersenCommitmentScheme<C> {
         // generator vector with unknown DL relation
         let generators = vec![C::Affine::rand(rng); supported_size];
         let pp = PedersenParams {
-            gen: g.mul(h_scalar),
+            generator: g.mul(h_scalar),
             vec_gen: generators,
         };
         Ok(pp)
@@ -53,7 +54,7 @@ impl<C: CurveGroup> PedersenCommitmentScheme<C> {
             ));
         }
         let msm = C::msm(&params.vec_gen, m).unwrap();
-        let cm: C = params.gen.mul(r) + msm;
+        let cm: C = params.generator.mul(r) + msm;
         end_timer!(start);
         Ok(cm)
     }
@@ -85,7 +86,7 @@ impl<C: CurveGroup> PedersenCommitmentScheme<C> {
         let start = start_timer!(|| "checking pedersen commitment...");
         let params = params;
         let msm = C::msm(&params.vec_gen, &open.message).unwrap();
-        let cm_prime = params.gen.mul(open.random) + msm;
+        let cm_prime = params.generator.mul(open.random) + msm;
         end_timer!(start);
         Ok(&cm_prime == cm)
     }
@@ -94,7 +95,7 @@ impl<C: CurveGroup> PedersenCommitmentScheme<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use utils::vec::convert;
+    use toolbox::vec::convert;
     use ark_bls12_381::{Fr as G1Fr, G1Projective};
     use ark_secp256k1::{Fr, Projective};
     use test::Bencher;

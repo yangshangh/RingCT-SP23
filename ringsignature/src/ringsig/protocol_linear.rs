@@ -7,10 +7,10 @@ use ark_std::{end_timer, rand::Rng, start_timer, UniformRand, Zero, One};
 use sha256::digest;
 use crate::commitment::pedersen::PedersenCommitmentScheme;
 use crate::commitment::PedersenParams;
-use crate::ringsig::structs::{RingSignature, RingSignatureParams, Openings};
-use utils::sigma::{transcript::ProofTranscript, SigmaProtocol};
-use utils::errors::SigmaErrors;
-use utils::vec::*;
+use crate::ringsig::structs::{LinearRingSignature, RingSignatureParams, Openings};
+use toolbox::sigma::{transcript::ProofTranscript, SigmaProtocol};
+use toolbox::errors::SigmaErrors;
+use toolbox::vec::*;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RingSignatureScheme<C>
@@ -36,7 +36,7 @@ where
     // challenge
     type Challenge = Vec<C::ScalarField>;
     /// proof
-    type Proof = RingSignature<C>;
+    type Proof = LinearRingSignature<C>;
 
     fn setup<R: Rng>(
         rng: &mut R,
@@ -142,8 +142,8 @@ where
 
         let com_E = C::msm(&params.vec_pk, &vec_r0_yn).unwrap() + PedersenCommitmentScheme::commit(&param_key, &vec![neg_rs], &C::ScalarField::zero(), "E")?;
         let param_u_v = PedersenParams {
-            gen: param_h_v.gen.clone(),
-            vec_gen: vec![param_g_u.gen.into_affine().clone()],
+            generator: param_h_v.generator.clone(),
+            vec_gen: vec![param_g_u.generator.into_affine().clone()],
         };
         let com_T1 = PedersenCommitmentScheme::commit(&param_u_v, &vec![tau1], &t1, "T1")?;
         let com_T2 = PedersenCommitmentScheme::commit(&param_u_v, &vec![tau2], &t2, "T2")?;
@@ -202,7 +202,7 @@ where
 
         // proving ends
         end_timer!(start);
-        Ok(RingSignature {
+        Ok(LinearRingSignature {
             commitments: vec![com_A, com_B, com_E, com_T1, com_T2],
             openings,
             challenges: vec![y,z,x],

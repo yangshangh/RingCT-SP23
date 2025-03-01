@@ -7,12 +7,13 @@ use ark_std::{end_timer, rand::Rng, start_timer, UniformRand, Zero, One};
 use sha256::digest;
 
 use bulletproofs::ipa::*;
+use bulletproofs::structs::*;
 use crate::commitment::pedersen::PedersenCommitmentScheme;
 use crate::commitment::PedersenParams;
-use crate::ringsig::structs::{RingSignature, RingSignatureParams, Openings};
-use utils::sigma::{transcript::ProofTranscript, SigmaProtocol};
-use utils::errors::SigmaErrors;
-use utils::vec::*;
+use crate::ringsig::structs::{LogarithmicRingSignature, RingSignatureParams, Openings};
+use toolbox::sigma::{transcript::ProofTranscript, SigmaProtocol};
+use toolbox::errors::SigmaErrors;
+use toolbox::vec::*;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RingSignatureScheme<C>
@@ -38,7 +39,7 @@ where
     // challenge
     type Challenge = Vec<C::ScalarField>;
     /// proof
-    type Proof = RingSignature<C>;
+    type Proof = LogarithmicRingSignature<C>;
 
     fn setup<R: Rng>(
         rng: &mut R,
@@ -144,8 +145,8 @@ where
 
         let com_E = C::msm(&params.vec_pk, &vec_r0_yn).unwrap() + PedersenCommitmentScheme::commit(&param_key, &vec![neg_rs], &C::ScalarField::zero(), "E")?;
         let param_u_v = PedersenParams {
-            gen: param_h_v.gen.clone(),
-            vec_gen: vec![param_g_u.gen.into_affine().clone()],
+            generator: param_h_v.generator.clone(),
+            vec_gen: vec![param_g_u.generator.into_affine().clone()],
         };
         let com_T1 = PedersenCommitmentScheme::commit(&param_u_v, &vec![tau1], &t1, "T1")?;
         let com_T2 = PedersenCommitmentScheme::commit(&param_u_v, &vec![tau2], &t2, "T2")?;
@@ -205,7 +206,7 @@ where
             vec_G.push((vec_g_yn[i] + params.vec_pk[i]).into_affine());
         }
         let vec_H = param_h_v.vec_gen.clone();
-        let v = param_h_v.gen.clone().into_affine();
+        let v = param_h_v.generator.clone().into_affine();
         let factors_G = vec![C::ScalarField::from(1u64); n];
         let factors_H = vec![C::ScalarField::from(1u64); n];
         let param = InnerProductParam {
@@ -216,11 +217,11 @@ where
             vec_H,
         };
 
-        let (proof, open) = InnerProductProtocol::<C>::prove(&param, zeta.clone(), eta.clone())?;
+        let proof = InnerProductProtocol::<C>::prove(&param, zeta.clone(), eta.clone())?;
 
         let openings = Openings {
-            zeta: vec![open.a],
-            eta: vec![open.b],
+            zeta: vec![proof.a],
+            eta: vec![proof.b],
             hat_t,
             taux,
             mu,
@@ -230,7 +231,7 @@ where
 
         // proving ends
         end_timer!(start);
-        Ok(RingSignature {
+        Ok(LogarithmicRingSignature {
             commitments: vec![com_A, com_B, com_E, com_T1, com_T2],
             openings,
             compression_proof: proof,
@@ -288,7 +289,7 @@ where
         }
         let vec_z1n = vec![z; params.num_pub_inputs];
         let param_g_yn_u = PedersenParams {
-            gen: param_g_u.gen.clone(),
+            generator: param_g_u.generator.clone(),
             vec_gen: vec_g_yn,
         };
         // let lhs_step2 = PedersenCommitmentScheme::commit(&param_g_yn_u, &openings.zeta, &C::ScalarField::zero(), "on zeta")?
@@ -339,7 +340,7 @@ where
             vec_G.push((param_g_yn_u.vec_gen[i] + params.vec_pk[i]).into_affine());
         }
         let vec_H = param_h_v.vec_gen.clone();
-        let v = param_h_v.gen.clone().into_affine();
+        let v = param_h_v.generator.clone().into_affine();
         let factors_G = vec![C::ScalarField::from(1u64); n];
         let factors_H = vec![C::ScalarField::from(1u64); n];
         let param = InnerProductParam {
@@ -349,13 +350,9 @@ where
             vec_G,
             vec_H,
         };
-        let open = InnerProductOpen {
-            a: openings.zeta[0].clone(),
-            b: openings.eta[0].clone(),
-        };
 
         // call Bulletproofs prover
-        InnerProductProtocol::<C>::verify(n, RHS, &param, &open, &proof.compression_proof)?;
+        InnerProductProtocol::<C>::verify(n, RHS, &param, &proof.compression_proof)?;
         let result = true;
         end_timer!(start);
         Ok(result)

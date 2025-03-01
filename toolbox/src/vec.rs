@@ -48,6 +48,7 @@ pub fn vec_add<F: PrimeField>(vec_a: &Vec<F>, vec_b: &Vec<F>) -> Vec<F> {
 }
 
 pub fn vec_split<T: Clone>(vec: &Vec<T>, n: usize) -> (Vec<T>, Vec<T>) {
+    assert!(vec.len() >= n, "Vectors must have length than n");
     let (slice_l, slice_r) = vec.split_at(n);
     (slice_l.to_vec(), slice_r.to_vec())
 }

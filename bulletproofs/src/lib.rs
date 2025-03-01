@@ -1,2 +1,2 @@
-mod ipa;
-mod rangeproof;
+pub mod ipa;
+pub mod structs;

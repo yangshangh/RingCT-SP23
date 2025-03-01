@@ -5,18 +5,10 @@ use std::marker::PhantomData;
 use ark_ec::CurveGroup;
 use ark_ff::Field;
 use ark_std::{end_timer, start_timer};
-use ringsignature::sigma::transcript::ProofTranscript;
-use ringsignature::SigmaErrors;
-use ringsignature::utils::{vec_add, vec_split, inner_product, scalar_product, hadamard_product};
-
-#[derive(Clone, Debug)]
-pub struct InnerProductProof<C: CurveGroup> {
-    pub(crate) vec_L: Vec<C::Affine>,
-    pub(crate) vec_R: Vec<C::Affine>,
-    pub(crate) a: C::ScalarField,
-    pub(crate) b: C::ScalarField,
-    pub(crate) challenges: Vec<C::ScalarField>,
-}
+use toolbox::sigma::transcript::ProofTranscript;
+use toolbox::errors::SigmaErrors;
+use toolbox::vec::{vec_add, vec_split, inner_product, scalar_product, hadamard_product};
+use crate::structs::*;
 
 #[derive(Clone, Debug)]
 pub struct InnerProductProtocol<C: CurveGroup> {
@@ -28,11 +20,7 @@ pub struct InnerProductProtocol<C: CurveGroup> {
 impl<C: CurveGroup> InnerProductProtocol<C>
 {
     pub fn prove(
-        u: C::Affine,
-        factors_G: Vec<C::ScalarField>,
-        factors_H: Vec<C::ScalarField>,
-        mut vec_G: Vec<C::Affine>,
-        mut vec_H: Vec<C::Affine>,
+        params: &InnerProductParam<C>,
         mut vec_a: Vec<C::ScalarField>,
         mut vec_b: Vec<C::ScalarField>,
     ) -> Result<InnerProductProof<C>, SigmaErrors> {
@@ -40,11 +28,13 @@ impl<C: CurveGroup> InnerProductProtocol<C>
         let start = start_timer!(|| "running inner product argument prove algorithm...");
         let mut transcript = ProofTranscript::<C::ScalarField>::new(b"RingSignature");
 
-        let mut n = vec_G.len();
+        let mut n = params.vec_G.len();
+        let mut vec_G = params.vec_G.clone();
+        let mut vec_H = params.vec_H.clone();
 
         // Ensure all vectors have the same length
-        if vec_H.len() != n || vec_a.len() != n || vec_b.len() !=n
-            || factors_G.len() != n || factors_H.len() != n
+        if params.vec_H.len() != n || vec_a.len() != n || vec_b.len() !=n
+            || params.factors_G.len() != n || params.factors_H.len() != n
         {
             return Err(SigmaErrors::InvalidParameters(
                 "vectors length are different".to_string(),
@@ -85,29 +75,29 @@ impl<C: CurveGroup> InnerProductProtocol<C>
 
             // compute L = (G_R^factors_G[n..2n])^a_L + (H_L^factors_H[0..n])^b_R
             let mut exp = vec![];
-            let temp_a: Vec<C::ScalarField> = hadamard_product(&a_L, &factors_G[n..2*n].to_vec());
-            let temp_b: Vec<C::ScalarField> = hadamard_product(&b_R, &factors_H[0..n].to_vec());
+            let temp_a: Vec<C::ScalarField> = hadamard_product(&a_L, &params.factors_G[n..2*n].to_vec());
+            let temp_b: Vec<C::ScalarField> = hadamard_product(&b_R, &params.factors_H[0..n].to_vec());
             exp.extend(temp_a);
             exp.extend(temp_b);
             exp.push(c_L);
 
             let mut base = G_R.to_vec();
             base.extend(H_L.to_vec());
-            base.push(u);
+            base.push(params.u);
 
             let com_L = C::msm(&base, &exp).unwrap().into_affine();
 
             // compute R = (G_L^factors_G[0..n])^a_R + (H_R^factors_H[n..2n])^b_L
             let mut exp = vec![];
-            let temp_a: Vec<C::ScalarField> = hadamard_product(&a_R, &factors_G[0..n].to_vec());
-            let temp_b: Vec<C::ScalarField> = hadamard_product(&b_L, &factors_H[n..2*n].to_vec());
+            let temp_a: Vec<C::ScalarField> = hadamard_product(&a_R, &params.factors_G[0..n].to_vec());
+            let temp_b: Vec<C::ScalarField> = hadamard_product(&b_L, &params.factors_H[n..2*n].to_vec());
             exp.extend(temp_a);
             exp.extend(temp_b);
             exp.push(c_R);
 
             let mut base = G_L.to_vec();
             base.extend(H_R.to_vec());
-            base.push(u);
+            base.push(params.u);
 
             let com_R = C::msm(&base, &exp).unwrap().into_affine();
 
@@ -134,8 +124,8 @@ impl<C: CurveGroup> InnerProductProtocol<C>
             vec_G = vec![];
             vec_H = vec![];
             for i in 0..n {
-                let term_G = C::msm(&[G_L[i], G_R[i]], &[x_inv*factors_G[i], x*factors_G[n+i]]).unwrap();
-                let term_H = C::msm(&[H_L[i], H_R[i]], &[x*factors_H[i], x_inv*factors_H[n+i]]).unwrap();
+                let term_G = C::msm(&[G_L[i], G_R[i]], &[x_inv*params.factors_G[i], x*params.factors_G[n+i]]).unwrap();
+                let term_H = C::msm(&[H_L[i], H_R[i]], &[x*params.factors_H[i], x_inv*params.factors_H[n+i]]).unwrap();
                 vec_G.push(term_G.into_affine());
                 vec_H.push(term_H.into_affine());
             }
@@ -163,7 +153,7 @@ impl<C: CurveGroup> InnerProductProtocol<C>
 
             let mut base = G_R.to_vec();
             base.extend(H_L.to_vec());
-            base.push(u);
+            base.push(params.u);
 
             let com_L = C::msm(&base, &exp).unwrap().into_affine();
 
@@ -174,7 +164,7 @@ impl<C: CurveGroup> InnerProductProtocol<C>
 
             let mut base = G_L.to_vec();
             base.extend(H_R.to_vec());
-            base.push(u);
+            base.push(params.u);
 
             let com_R = C::msm(&base, &exp).unwrap().into_affine();
 
@@ -222,18 +212,17 @@ impl<C: CurveGroup> InnerProductProtocol<C>
     pub fn verify(
         n: usize,
         target_P: C,
-        factors_G: Vec<C::ScalarField>,
-        factors_H: Vec<C::ScalarField>,
-        vec_G: Vec<C::Affine>,
-        vec_H: Vec<C::Affine>,
-        u: C::Affine,
-        proof: InnerProductProof<C>,
+        params: &InnerProductParam<C>,
+        proof: &InnerProductProof<C>,
     ) -> Result<(), SigmaErrors> {
         let start = start_timer!(|| "running inner product argument verify algorithm...");
         let mut transcript = ProofTranscript::<C::ScalarField>::new(b"RingSignature");
 
-        assert_eq!(vec_G.len(), n);
+        assert_eq!(params.vec_G.len(), n);
         let log_n = proof.vec_L.len();
+        let mut vec_G = params.vec_G.clone();
+        let mut vec_H = params.vec_H.clone();
+
         // prevents overflow
         if log_n >= 32 {
             return Err(
@@ -309,8 +298,8 @@ impl<C: CurveGroup> InnerProductProtocol<C>
         // assert_eq!(expected_vec_H[0], C::msm(&vec_H, &hadamard_product(&vec_box_reverse, &factors_H)).unwrap().into_affine());
 
         // compute factors_g*vec_box*a and factors_h*vec_box_reverse*b
-        let g_a_box = scalar_product(&hadamard_product(&vec_box, &factors_G), &proof.a);
-        let h_b_box = scalar_product(&hadamard_product(&vec_box_reverse, &factors_H), &proof.b);
+        let g_a_box = scalar_product(&hadamard_product(&vec_box, &params.factors_G), &proof.a);
+        let h_b_box = scalar_product(&hadamard_product(&vec_box_reverse, &params.factors_H), &proof.b);
 
         // compute P =
         // u^{ab} *
@@ -327,11 +316,11 @@ impl<C: CurveGroup> InnerProductProtocol<C>
         exp.extend(neg_challenges_sq);
         exp.extend(neg_challenges_inv_sq);
 
-        let mut base = vec![u];
+        let mut base = vec![params.u];
         base.extend(vec_G);
         base.extend(vec_H);
-        base.extend(proof.vec_L);
-        base.extend(proof.vec_R);
+        base.extend(proof.vec_L.clone());
+        base.extend(proof.vec_R.clone());
 
         let expected_P = C::msm(&base, &exp).unwrap();
 
@@ -351,7 +340,7 @@ mod tests {
     use super::*;
     use ark_secp256k1::{Fr, Projective, Affine};
     use ark_std::UniformRand;
-    use ringsignature::utils::convert;
+    use toolbox::vec::convert;
 
     #[test]
     fn test_ipa() {
@@ -366,7 +355,15 @@ mod tests {
         let fac_H: Vec<Fr> = convert(&[1u64, 1u64, 1u64, 1u64]);
 
         type IPA = InnerProductProtocol<Projective>;
-        let proof = IPA::prove(u, fac_G.clone(), fac_H.clone(), vec_G.clone(), vec_H.clone(), vec_a.clone(), vec_b.clone()).unwrap();
+        let params = InnerProductParam {
+            factors_G: fac_G.clone(),
+            factors_H: fac_H.clone(),
+            u,
+            vec_G: vec_G.clone(),
+            vec_H: vec_H.clone()
+        };
+
+        let proof = IPA::prove(&params, vec_a.clone(), vec_b.clone()).unwrap();
         // compute P with uncompressed vectors vec_a, vec_b
         let t = inner_product(&vec_a, &vec_b);
         let mut exp = vec![];
@@ -377,7 +374,7 @@ mod tests {
         base.extend(vec_H.clone());
 
         let P = Projective::msm(&base, &exp).unwrap() + u*t;
-        IPA::verify(n, P, fac_G, fac_H, vec_G, vec_H, u, proof).unwrap();
+        IPA::verify(n, P, &params, &proof).unwrap();
     }
 }
 

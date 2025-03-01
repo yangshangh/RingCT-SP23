@@ -1,3 +1,3 @@
 mod structs;
-mod protocol;
-// mod protocol_linear;
+mod protocol_linear;
+mod protocol_compressed;

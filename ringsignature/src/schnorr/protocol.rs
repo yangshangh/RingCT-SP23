@@ -3,9 +3,9 @@ use ark_std::{end_timer, rand::Rng, start_timer, UniformRand};
 use sha256::digest;
 use std::{fmt::Debug, io::Write, marker::PhantomData};
 use crate::commitment::pedersen::PedersenCommitmentScheme;
-use utils::errors::SigmaErrors;
+use toolbox::errors::SigmaErrors;
 use crate::schnorr::structs::{SchnorrParams, SchnorrProof};
-use utils::sigma::{transcript::ProofTranscript, SigmaProtocol};
+use toolbox::sigma::{transcript::ProofTranscript, SigmaProtocol};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SchnorrProtocol<C>
